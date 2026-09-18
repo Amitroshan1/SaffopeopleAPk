@@ -1,0 +1,103 @@
+/**
+ * Native shell polish — keeps the same website look with smoother mobile UX.
+ * Loaded only from main.jsx (web-app mobile build).
+ */
+
+html.capacitor-native {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+html.capacitor-native body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+html.capacitor-native .main-layout,
+html.capacitor-native .app-layout {
+  min-height: 100dvh;
+}
+
+html.capacitor-native .content-area {
+  -webkit-overflow-scrolling: touch;
+}
+
+html.capacitor-native button,
+html.capacitor-native .cta-button,
+html.capacitor-native .attendance-btn,
+html.capacitor-native .payslip-download-btn {
+  touch-action: manipulation;
+}
+
+html.capacitor-native input,
+html.capacitor-native select,
+html.capacitor-native textarea {
+  font-size: 16px;
+}
+
+html.capacitor-native .loader {
+  animation: saffo-spin 0.9s linear infinite;
+}
+
+@keyframes saffo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Native app: tighter touch targets and page rhythm */
+html.capacitor-native .manager-tab-card,
+html.capacitor-native .manager-tab-card__badge,
+html.capacitor-native .action-card,
+html.capacitor-native .filter-tab {
+  touch-action: manipulation;
+}
+
+html.capacitor-native .manager-dashboard-wrapper,
+html.capacitor-native .attendance-dashboard-container,
+html.capacitor-native .employee-assets {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+html.capacitor-native .dashboard-content {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+}
+
+/* News feed: ensure items are visible in stacked mobile layout */
+html.capacitor-native .dashboard-content .main-grid .dashboard-top-row .news-feed-section,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section {
+  height: auto !important;
+  min-height: 240px !important;
+}
+
+html.capacitor-native
+  .dashboard-content
+  .main-grid
+  .dashboard-top-row
+  .news-feed-section
+  .news-feed-scroll-viewport,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section .news-feed-scroll-viewport {
+  min-height: 160px;
+  max-height: min(360px, 45vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.capacitor-native
+  .dashboard-content
+  .main-grid
+  .dashboard-top-row
+  .news-feed-section
+  .news-feed-list,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section .news-feed-list {
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+html.capacitor-native .hr-main-container.hr-panel-root .hr-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}

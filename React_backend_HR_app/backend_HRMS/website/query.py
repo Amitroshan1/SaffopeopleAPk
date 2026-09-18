@@ -1,0 +1,1261 @@
+# create query,my query, view queries,department_queries,reply_query,close_query_api,etc
+# search_managers_api,get_manager_contact_api,upsert_manager_contact_api
+
+
+#https://solviotec.com/api/query
+
+
+
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
+from flask_jwt_extended import jwt_required, get_jwt
+from sqlalchemy import extract, func, or_
+from sqlalchemy.orm import joinedload, selectinload
+from . import db
+from .models.Admin_models import Admin
+from .models.query import Query, QueryReply
+from .models.notification import Notification
+from .email import notify_query_event, send_query_closed_email
+from .models.emp_detail_models import Employee
+from .models.manager_model import ManagerContact
+from .manager_utils import get_manager_detail
+from werkzeug.utils import secure_filename
+from .datetime_utils import isoformat_api, utc_now
+import json
+import os
+import re
+import uuid
+
+
+
+
+query = Blueprint('query', __name__)
+
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
+
+
+def _query_list_effective_created_at(q):
+    """List views need a stable created time; legacy rows may have NULL queries.created_at."""
+    if getattr(q, "created_at", None):
+        return q.created_at
+    reps = [
+        r.created_at
+        for r in (getattr(q, "replies", None) or [])
+        if getattr(r, "created_at", None)
+    ]
+    return min(reps) if reps else None
+
+
+def _repair_query_created_at_from_history():
+    """Repair legacy query timestamps from existing historical events, never from current time."""
+    try:
+        rows = (
+            Query.query.options(selectinload(Query.replies))
+            .all()
+        )
+        if not rows:
+            return
+
+        notification_dates = {
+            query_id: created_at
+            for query_id, created_at in (
+                db.session.query(Notification.entity_id, func.min(Notification.created_at))
+                .filter(
+                    Notification.entity_type == "query",
+                    Notification.entity_id.isnot(None),
+                    Notification.created_at.isnot(None),
+                )
+                .group_by(Notification.entity_id)
+                .all()
+            )
+        }
+
+        changed = False
+        for row in rows:
+            candidates = []
+            notification_created_at = notification_dates.get(row.id)
+            if notification_created_at:
+                candidates.append(notification_created_at)
+            candidates.extend(
+                r.created_at
+                for r in (getattr(row, "replies", None) or [])
+                if getattr(r, "created_at", None)
+            )
+            if not candidates:
+                continue
+
+            historical_created_at = min(candidates)
+            if row.created_at is None or historical_created_at < row.created_at:
+                row.created_at = historical_created_at
+                changed = True
+
+        if changed:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("query created_at repair skipped")
+
+
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploads', 'queries'))
+
+
+def _parse_query_attachments(photo_field):
+    if not photo_field:
+        return []
+    try:
+        data = json.loads(photo_field)
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _attachment_display_name(stored_name):
+    name = (stored_name or "").strip()
+    if "_" in name:
+        return name.split("_", 1)[1] or name
+    return name
+DEPARTMENT_ROLES = {
+    "human resource",
+    "human resources",
+    "hr",
+    "accounts",
+    "account",
+    "accountant",
+    "it",
+    "it department",
+    "inventory",
+    "admin",
+    "administration",
+    "engineering",
+}
+
+
+def _norm(value):
+    return (value or "").strip().lower()
+
+
+def _department_variants(department):
+    """Normalize department labels for inbox filtering (strict per-department scope)."""
+    d = _norm(department)
+    variants = {d}
+    if d in {"human resource", "human resources", "hr"}:
+        variants.update({"human resource", "human resources", "hr"})
+    elif d in {"it", "it department", "engineering", "inventory"}:
+        # IT staff (+ inventory emp_type) see IT queries; include legacy Inventory tags.
+        variants.update({"it", "it department", "engineering", "inventory"})
+    elif d in {"accounts", "account", "accountant"}:
+        variants.update({"accounts", "account", "accountant"})
+    elif d in {"admin", "administration"}:
+        variants.update({"admin", "administration"})
+    return list(variants)
+
+
+def _canonical_inbox_department(name):
+    """Canonical inbox department: Human Resource | IT | Accounts."""
+    from .plan_features import QUERY_DEPARTMENT_CANONICAL, canonical_query_department
+
+    if not name:
+        return None
+    canon = canonical_query_department(name)
+    if canon:
+        return canon
+    for label in QUERY_DEPARTMENT_CANONICAL:
+        if _norm(label) == _norm(name):
+            return label
+    mapped = _emp_type_to_department(name)
+    if mapped:
+        return mapped
+    return None
+
+
+def _inbox_department_labels(inbox_department):
+    """All lowercase stored query.department values that belong to this inbox."""
+    from .plan_features import QUERY_DEPARTMENT_CANONICAL, canonical_query_department
+
+    canon = _canonical_inbox_department(inbox_department)
+    if not canon:
+        return []
+    labels = {_norm(canon)}
+    for label in QUERY_DEPARTMENT_CANONICAL:
+        if canonical_query_department(label) == canon:
+            labels.add(_norm(label))
+    labels.update(_norm(v) for v in _department_variants(canon))
+    return sorted(labels)
+
+
+def _query_department_sql_filter(inbox_department):
+    labels = _inbox_department_labels(inbox_department)
+    if not labels:
+        return Query.id.is_(None)
+    return or_(
+        *[
+            func.lower(func.trim(func.coalesce(Query.department, ""))) == label
+            for label in labels
+        ]
+    )
+
+
+def _query_belongs_to_inbox(query_department, inbox_department):
+    """True when a stored query.department belongs in the requested inbox."""
+    from .plan_features import canonical_query_department
+
+    inbox_canon = _canonical_inbox_department(inbox_department)
+    if not inbox_canon:
+        return False
+
+    query_canon = canonical_query_department(query_department)
+    if query_canon:
+        return query_canon == inbox_canon
+
+    labels = frozenset(_inbox_department_labels(inbox_department))
+    if not labels:
+        return False
+    return _norm(query_department) in labels
+
+
+def _can_access_inbox_department(admin, emp_type, inbox_department):
+    """Whether this user may open the given department query inbox."""
+    from .plan_features import (
+        is_accounts_role,
+        is_hr_role,
+        is_it_role,
+        is_org_admin,
+    )
+
+    target = _canonical_inbox_department(inbox_department)
+    if not target:
+        return False
+
+    natural = _resolve_department_for_inbox(admin, emp_type)
+    if natural and _canonical_inbox_department(natural) == target:
+        return True
+
+    claims = {"emp_type": emp_type or getattr(admin, "emp_type", None)}
+    if is_org_admin(claims):
+        return True
+    if target == "IT" and is_it_role(claims):
+        return True
+    if target == "Human Resource" and is_hr_role(claims):
+        return True
+    if target == "Accounts" and is_accounts_role(claims):
+        return True
+    return False
+
+
+def _department_recipients(department, exclude_admin_id=None):
+    """Staff whose emp_type matches the query department (for notifications)."""
+    dept_options = _department_variants(department)
+    filters = [func.lower(func.coalesce(Admin.emp_type, "")) == val for val in dept_options]
+    q = Admin.query.filter(or_(*filters))
+    q = q.filter(or_(Admin.is_exited == False, Admin.is_exited.is_(None)))
+    if exclude_admin_id:
+        q = q.filter(Admin.id != exclude_admin_id)
+    return q.all()
+
+
+def count_new_queries_for_department_staff(emp_type, admin=None):
+    """
+    Legacy: count of queries with status New in the viewer's department inbox.
+    Prefer count_department_query_unread for header badges.
+    """
+    if admin is None and emp_type is None:
+        return 0
+    department = _resolve_department_for_inbox(admin, emp_type) if admin else _emp_type_to_department(emp_type)
+    if not department:
+        return 0
+    return Query.query.filter(
+        func.lower(func.coalesce(Query.status, "")) == "new",
+        _query_department_sql_filter(department),
+    ).count()
+
+
+def count_department_query_unread(admin_id, emp_type=None):
+    """Unread query notifications for department inbox badge (new queries + employee replies)."""
+    if not admin_id:
+        return 0
+    admin = Admin.query.get(admin_id)
+    if not admin:
+        return 0
+    if _resolve_department_for_inbox(admin, emp_type) is None:
+        return 0
+    return Notification.query.filter_by(
+        recipient_admin_id=admin_id,
+        notif_type="query",
+        is_read=False,
+    ).count()
+
+
+def _unread_counts_by_query_id(admin_id, query_ids):
+    if not admin_id or not query_ids:
+        return {}
+    rows = (
+        db.session.query(Notification.entity_id, func.count(Notification.id))
+        .filter(
+            Notification.recipient_admin_id == admin_id,
+            Notification.notif_type == "query",
+            Notification.is_read.is_(False),
+            Notification.entity_type == "query",
+            Notification.entity_id.in_(query_ids),
+        )
+        .group_by(Notification.entity_id)
+        .all()
+    )
+    return {int(qid): int(cnt) for qid, cnt in rows if qid is not None}
+
+
+def _emp_type_to_department(emp_type):
+    normalized = _norm(emp_type)
+    if normalized in {"human resource", "human resources", "hr"}:
+        return "Human Resource"
+    if normalized in {"it", "it department", "engineering", "inventory"}:
+        return "IT"
+    if normalized in {"admin", "administration"}:
+        return "Administration"
+    if normalized in {"accounts", "account", "accountant"}:
+        return "Accounts"
+    return None
+
+
+def _infer_department_from_text(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    n = _norm(text)
+    # Super Admin is not a department inbox; avoid matching "admin" inside that label.
+    if "super" in n and "admin" in n:
+        return None
+    if re.search(r"\bhuman\s+resources?\b|\bhr\b", text, re.I):
+        return "Human Resource"
+    if re.search(r"\binformation\s+technology\b|\bit\s+department\b|\bit\b|\binventory\b", text, re.I):
+        return "IT"
+    if re.search(r"\baccounts\b|\baccountant\b|\baccount\b", text, re.I):
+        return "Accounts"
+    if re.search(r"\badministration\b", text, re.I):
+        return "Administration"
+    if n in {"admin", "administrator"}:
+        return "Administration"
+    return None
+
+
+def _resolve_department_for_inbox(admin, jwt_emp_type=None):
+    """Map a staff user to their query inbox department (JWT, profile, or job title)."""
+    if not admin:
+        return None
+
+    candidates = []
+    for value in (jwt_emp_type, getattr(admin, "emp_type", None)):
+        if value and str(value).strip():
+            candidates.append(str(value).strip())
+
+    employee = Employee.query.filter_by(admin_id=admin.id).first()
+    if employee and getattr(employee, "designation", None):
+        candidates.append(str(employee.designation).strip())
+
+    seen = set()
+    for cand in candidates:
+        key = cand.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        dept = _emp_type_to_department(cand)
+        if dept:
+            return dept
+
+        if _norm(cand) in DEPARTMENT_ROLES:
+            inferred = _infer_department_from_text(cand)
+            if inferred:
+                return inferred
+
+        inferred = _infer_department_from_text(cand)
+        if inferred:
+            return inferred
+
+    return None
+
+
+def _department_staff_can_close(emp_type):
+    """Who may close queries on behalf of the department (matches inbox roles + engineering)."""
+    n = _norm(emp_type)
+    return n in {
+        "human resource",
+        "human resources",
+        "hr",
+        "accounts",
+        "engineering",
+        "it",
+        "it department",
+        "inventory",
+        "admin",
+        "administration",
+    }
+
+
+def _can_access_query(admin, emp_type, query_obj):
+    if not admin:
+        return False
+    if query_obj.admin_id == admin.id:
+        return True
+
+    department = _resolve_department_for_inbox(admin, emp_type)
+    if not department:
+        return False
+    return _query_belongs_to_inbox(query_obj.department, department)
+
+
+def _create_notifications_for_admins(admins, title, body, query_id):
+    if not admins:
+        return
+    for recipient in admins:
+        db.session.add(
+            Notification(
+                recipient_admin_id=recipient.id,
+                notif_type="query",
+                title=title,
+                body=body,
+                entity_type="query",
+                entity_id=query_id,
+            )
+        )
+
+
+def _create_query_notification_to_owner(query_obj, title, body, actor_admin_id=None):
+    if actor_admin_id and query_obj.admin_id == actor_admin_id:
+        return
+    db.session.add(
+        Notification(
+            recipient_admin_id=query_obj.admin_id,
+            notif_type="query",
+            title=title,
+            body=body,
+            entity_type="query",
+            entity_id=query_obj.id,
+        )
+    )
+
+
+
+
+
+@query.route("/queries", methods=["POST"])
+@jwt_required()
+def create_query_api():
+    claims = get_jwt()
+    email = claims.get("email")
+
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    data = request.form if request.form else (request.get_json(silent=True) or {})
+    title = (data.get("title") or "").strip() if not isinstance(data.get("title"), list) else ""
+    query_text = (data.get("query_text") or "").strip() if not isinstance(data.get("query_text"), list) else ""
+
+    # Multi-department: form getlist, JSON array, or comma-separated single field
+    departments = []
+    if request.form:
+        departments = [
+            (d or "").strip()
+            for d in (request.form.getlist("department") or request.form.getlist("departments") or [])
+            if (d or "").strip()
+        ]
+        if not departments:
+            raw = (request.form.get("department") or "").strip()
+            if raw:
+                departments = [p.strip() for p in raw.split(",") if p.strip()]
+    else:
+        raw_depts = data.get("departments")
+        if raw_depts is None:
+            raw_depts = data.get("department")
+        if isinstance(raw_depts, (list, tuple)):
+            departments = [str(d).strip() for d in raw_depts if str(d).strip()]
+        elif raw_depts:
+            departments = [p.strip() for p in str(raw_depts).split(",") if p.strip()]
+
+    # De-dupe preserving order
+    seen = set()
+    unique_departments = []
+    for d in departments:
+        key = d.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_departments.append(d)
+    departments = unique_departments
+
+    if not title or not departments or not query_text:
+        return jsonify({
+            "success": False,
+            "message": "title, department(s) and query_text are required"
+        }), 400
+
+    from .plan_features import (
+        QUERY_DEPARTMENT_CANONICAL,
+        canonical_query_department,
+        has_feature,
+        is_allowed_query_department,
+        plan_forbidden_response,
+    )
+
+    # Normalize to canonical raise targets only (Human Resource / IT / Accounts).
+    normalized = []
+    seen_canon = set()
+    for raw_dept in departments:
+        canon = canonical_query_department(raw_dept)
+        if not canon or canon not in QUERY_DEPARTMENT_CANONICAL:
+            return jsonify({
+                "success": False,
+                "message": f"Invalid department: {raw_dept}. Choose Human Resource, IT, or Accounts.",
+            }), 400
+        if not is_allowed_query_department(canon):
+            required = (
+                "query_hr_and_accounts"
+                if has_feature("query_hr_and_accounts")
+                else "query_all_departments"
+            )
+            return plan_forbidden_response(required)
+        if canon in seen_canon:
+            continue
+        seen_canon.add(canon)
+        normalized.append(canon)
+    departments = normalized
+
+    if not departments:
+        return jsonify({
+            "success": False,
+            "message": "title, department(s) and query_text are required"
+        }), 400
+
+    files = request.files.getlist("files") if request.files else []
+    saved_files = []
+
+    if files:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        for file in files:
+            if not file or not file.filename:
+                continue
+            file.seek(0, os.SEEK_END)
+            size = file.tell()
+            file.seek(0)
+            if size > MAX_FILE_SIZE_BYTES:
+                return jsonify({
+                    "success": False,
+                    "message": f"{file.filename} exceeds 2MB limit"
+                }), 413
+
+            safe_name = secure_filename(file.filename)
+            unique_name = f"{uuid.uuid4().hex}_{safe_name}"
+            file.save(os.path.join(UPLOAD_DIR, unique_name))
+            saved_files.append(unique_name)
+
+    photo_json = json.dumps(saved_files) if saved_files else None
+    created_ids = []
+    for department in departments:
+        query_obj = Query(
+            admin_id=admin.id,
+            title=title,
+            department=department,
+            query_text=query_text,
+            created_at=utc_now(),
+            photo=photo_json,
+        )
+        db.session.add(query_obj)
+        db.session.flush()
+        created_ids.append(query_obj.id)
+
+        try:
+            notify_query_event(query_obj, action="created")
+        except Exception:
+            pass
+
+        recipients = _department_recipients(department, exclude_admin_id=admin.id)
+        _create_notifications_for_admins(
+            recipients,
+            title=f"New Query: {title}",
+            body=f"{admin.first_name or admin.email} raised a query for {department}.",
+            query_id=query_obj.id,
+        )
+
+    db.session.commit()
+
+    dept_label = ", ".join(departments)
+    return jsonify({
+        "success": True,
+        "message": (
+            f"Query created for {dept_label}"
+            if len(departments) == 1
+            else f"Query created for {len(departments)} departments: {dept_label}"
+        ),
+        "query_id": created_ids[0] if created_ids else None,
+        "query_ids": created_ids,
+        "departments": departments,
+    }), 201
+
+
+
+
+
+#for employee to view all queries
+@query.route("/queries/my", methods=["GET"])
+@jwt_required()
+def my_queries():
+    email = get_jwt().get("email")
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        return jsonify({"success": False, "message": "User not found"}), 404
+    _repair_query_created_at_from_history()
+
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 10))
+
+    pagination = (
+        Query.query.options(selectinload(Query.replies))
+        .filter_by(admin_id=admin.id)
+        .order_by(Query.created_at.desc())
+        .paginate(page=page, per_page=limit, error_out=False)
+    )
+
+    queries_out = []
+    unread_map = _unread_counts_by_query_id(admin.id, [q.id for q in pagination.items])
+    for q in pagination.items:
+        eff = _query_list_effective_created_at(q)
+        unread = unread_map.get(q.id, 0)
+        queries_out.append(
+            {
+                "id": q.id,
+                "title": q.title,
+                "department": q.department,
+                "query_text": q.query_text,
+                "status": q.status,
+                "created_at": isoformat_api(eff),
+                "unread_reply_count": unread,
+                "has_unread_reply": unread > 0,
+                "attachments": _parse_query_attachments(q.photo),
+            }
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "total": pagination.total,
+            "queries": queries_out,
+        }
+    ), 200
+
+
+
+
+
+def _serialize_department_inbox_query(q, unread_map):
+    adm = q.admin
+    eff_created = _query_list_effective_created_at(q)
+    unread = unread_map.get(q.id, 0)
+    employee_email = adm.email if adm else None
+    employee_name = (
+        ((adm.first_name or "").strip() if adm else "")
+        or employee_email
+        or "Employee"
+    )
+    return {
+        "id": q.id,
+        "title": q.title,
+        "department": q.department,
+        "query_text": q.query_text,
+        "employee": employee_email,
+        "employee_name": employee_name,
+        "employee_email": employee_email,
+        "emp_id": (adm.emp_id if adm else None) or "",
+        "status": q.status,
+        "created_at": isoformat_api(eff_created),
+        "unread_reply_count": unread,
+        "has_unread_reply": unread > 0,
+    }
+
+
+def _load_department_inbox_queries(admin, department):
+    """Queries for one department inbox, with canonical post-filter."""
+    _repair_query_created_at_from_history()
+
+    q = Query.query.options(joinedload(Query.admin), selectinload(Query.replies)).filter(
+        _query_department_sql_filter(department)
+    )
+
+    reply_created_at_subquery = (
+        db.session.query(func.min(QueryReply.created_at))
+        .filter(QueryReply.query_id == Query.id)
+        .correlate(Query)
+        .scalar_subquery()
+    )
+    effective_created_at = func.coalesce(Query.created_at, reply_created_at_subquery)
+
+    month_str = (request.args.get("month") or "").strip()
+    if month_str:
+        try:
+            year_m, month_m = map(int, month_str.split("-"))
+            if not (1 <= month_m <= 12):
+                raise ValueError()
+            q = q.filter(
+                extract("year", effective_created_at) == year_m,
+                extract("month", effective_created_at) == month_m,
+            )
+        except ValueError:
+            return None, (
+                jsonify({"success": False, "message": "Invalid month format. Use YYYY-MM"}),
+                400,
+            )
+
+    circle_param = (request.args.get("circle") or "").strip()
+    if circle_param:
+        circle_param_lower = circle_param.lower()
+        q = q.filter(
+            Query.admin.has(
+                func.lower(func.trim(func.coalesce(Admin.circle, ""))) == circle_param_lower
+            )
+        )
+
+    queries = q.order_by(effective_created_at.desc(), Query.id.desc()).all()
+    queries = [
+        row for row in queries
+        if _query_belongs_to_inbox(row.department, department)
+    ]
+    unread_map = _unread_counts_by_query_id(admin.id, [row.id for row in queries])
+    return queries, unread_map
+
+
+def _department_inbox_response(admin, department):
+    loaded = _load_department_inbox_queries(admin, department)
+    if isinstance(loaded[1], tuple):
+        return loaded[1]
+    queries, unread_map = loaded
+    return jsonify({
+        "success": True,
+        "inbox": _canonical_inbox_department(department) or department,
+        "queries": [_serialize_department_inbox_query(q, unread_map) for q in queries],
+    }), 200
+
+
+#department to view all queries
+@query.route("/queries", methods=["GET"])
+@jwt_required()
+def department_queries():
+    try:
+        claims = get_jwt()
+        emp_type = claims.get("emp_type")
+
+        email = get_jwt().get("email")
+        admin = Admin.query.filter_by(email=email).first()
+        if not admin:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
+        requested = (request.args.get("department") or "").strip()
+        if requested:
+            department = _canonical_inbox_department(requested)
+            if not department:
+                return jsonify({"success": False, "message": "Invalid department"}), 400
+            if not _can_access_inbox_department(admin, emp_type, department):
+                return jsonify({"success": False, "message": "Unauthorized"}), 403
+        else:
+            department = _resolve_department_for_inbox(admin, emp_type)
+            if not department:
+                return jsonify({"success": False, "message": "Unauthorized"}), 403
+            department = _canonical_inbox_department(department) or department
+
+        return _department_inbox_response(admin, department)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("department_queries failed")
+        return jsonify({"success": False, "message": "Failed to load department queries"}), 500
+
+
+@query.route("/queries/it-inbox", methods=["GET"])
+@jwt_required()
+def it_department_queries():
+    """IT ticket inbox only — hard-scoped; used by IT Open Tickets panel."""
+    try:
+        claims = get_jwt()
+        emp_type = claims.get("emp_type")
+        email = claims.get("email")
+        admin = Admin.query.filter_by(email=email).first()
+        if not admin:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
+        department = "IT"
+        if not _can_access_inbox_department(admin, emp_type, department):
+            return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+        return _department_inbox_response(admin, department)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("it_department_queries failed")
+        return jsonify({"success": False, "message": "Failed to load IT queries"}), 500
+
+
+@query.route("/queries/<int:query_id>/mark-read", methods=["POST"])
+@jwt_required()
+def mark_query_notifications_read(query_id):
+    claims = get_jwt()
+    email = claims.get("email")
+    emp_type = claims.get("emp_type")
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    query_obj = Query.query.get(query_id)
+    if not query_obj:
+        return jsonify({"success": False, "message": "Query not found"}), 404
+    if not _can_access_query(admin, emp_type, query_obj):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    rows = Notification.query.filter_by(
+        recipient_admin_id=admin.id,
+        notif_type="query",
+        entity_type="query",
+        entity_id=query_id,
+        is_read=False,
+    ).all()
+    for row in rows:
+        row.is_read = True
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "updated": len(rows),
+        "unread_reply_count": 0,
+        "has_unread_reply": False,
+    }), 200
+
+
+
+
+#chat history for a query
+@query.route("/queries/<int:query_id>", methods=["GET"])
+@jwt_required()
+def query_details(query_id):
+    claims = get_jwt()
+    email = claims.get("email")
+    emp_type = claims.get("emp_type")
+    admin = Admin.query.filter_by(email=email).first()
+    query_obj = Query.query.get_or_404(query_id)
+    if not _can_access_query(admin, emp_type, query_obj):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    attachments = _parse_query_attachments(query_obj.photo)
+    query_admin = query_obj.admin
+    query_author = (
+        (query_admin.first_name if query_admin else None)
+        or (query_admin.email if query_admin else None)
+        or "Employee"
+    )
+
+    chat_messages = [
+        {
+            "text": query_obj.query_text,
+            "user_type": "EMPLOYEE",
+            "created_at": isoformat_api(query_obj.created_at),
+            "by": query_author,
+        }
+    ]
+    chat_messages.extend([
+        {
+            "text": r.reply_text,
+            "user_type": r.user_type,
+            "created_at": isoformat_api(r.created_at),
+            "by": (
+                (r.admin.first_name if r.admin else None)
+                or (r.admin.email if r.admin else None)
+                or "User"
+            ),
+        } for r in query_obj.replies
+    ])
+
+    return jsonify({
+        "success": True,
+        "query": {
+            "id": query_obj.id,
+            "title": query_obj.title,
+            "department": query_obj.department,
+            "status": query_obj.status,
+            "created_at": isoformat_api(query_obj.created_at),
+            "attachments": attachments
+        },
+        "chat_messages": chat_messages
+    }), 200
+
+
+
+
+
+@query.route("/queries/<int:query_id>/files/<path:filename>", methods=["GET"])
+@jwt_required()
+def download_query_file(query_id, filename):
+    claims = get_jwt()
+    email = claims.get("email")
+    emp_type = claims.get("emp_type")
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    query_obj = Query.query.get(query_id)
+    if not query_obj:
+        return jsonify({"success": False, "message": "Query not found"}), 404
+    if not _can_access_query(admin, emp_type, query_obj):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    stored = (filename or "").strip()
+    if not stored or stored != secure_filename(stored) or ".." in stored:
+        return jsonify({"success": False, "message": "Invalid file name"}), 400
+
+    allowed = _parse_query_attachments(query_obj.photo)
+    if stored not in allowed:
+        return jsonify({"success": False, "message": "File not found"}), 404
+
+    file_path = os.path.join(UPLOAD_DIR, stored)
+    if not os.path.isfile(file_path):
+        return jsonify({"success": False, "message": "File not found"}), 404
+
+    try:
+        from .pdf_watermark import is_pdf_download, send_download_file
+        if is_pdf_download(stored):
+            return send_download_file(path=file_path, download_name=stored, as_attachment=False)
+        return send_from_directory(UPLOAD_DIR, stored, as_attachment=False)
+    except Exception:
+        current_app.logger.exception("download_query_file failed for %s", stored)
+        return jsonify({"success": False, "message": "Unable to open file"}), 500
+
+
+#reply to a query
+@query.route("/queries/<int:query_id>/reply", methods=["POST"])
+@jwt_required()
+def reply_query(query_id):
+    claims = get_jwt()
+    email = claims.get("email")
+    emp_type = claims.get("emp_type")
+
+    admin = Admin.query.filter_by(email=email).first()
+    query_obj = Query.query.get_or_404(query_id)
+    if not _can_access_query(admin, emp_type, query_obj):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    data = request.get_json() or {}
+    reply_text = data.get("reply_text")
+
+    if not reply_text:
+        return jsonify({"success": False, "message": "reply_text required"}), 400
+
+    user_type = "DEPARTMENT" if _resolve_department_for_inbox(admin, emp_type) else "EMPLOYEE"
+
+    reply = QueryReply(
+        query_id=query_id,
+        admin_id=admin.id,
+        reply_text=reply_text,
+        user_type=user_type,
+        created_at=utc_now(),
+    )
+
+    if query_obj.status == "New":
+        query_obj.status = "Open"
+
+    db.session.add(reply)
+
+    if user_type == "DEPARTMENT":
+        _create_query_notification_to_owner(
+            query_obj=query_obj,
+            title=f"Reply on Query: {query_obj.title}",
+            body=f"{admin.first_name or admin.email} replied to your query.",
+            actor_admin_id=admin.id,
+        )
+    else:
+        recipients = _department_recipients(query_obj.department, exclude_admin_id=admin.id)
+        _create_notifications_for_admins(
+            recipients,
+            title=f"Employee Reply: {query_obj.title}",
+            body=f"{admin.first_name or admin.email} replied on a {query_obj.department} query.",
+            query_id=query_obj.id,
+        )
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Reply added"
+    }), 201
+
+
+
+
+
+# close query: query owner (employee) or department staff for that department
+
+@query.route("/queries/<int:query_id>/close", methods=["POST"])
+@jwt_required()
+def close_query_api(query_id):
+
+    claims = get_jwt()
+    emp_type = claims.get("emp_type")
+    closed_by_email = claims.get("email")
+    closed_by_admin = Admin.query.filter_by(email=closed_by_email).first()
+    query_obj = Query.query.get_or_404(query_id)
+
+    if not closed_by_admin:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    if query_obj.status == "Closed":
+        return jsonify({"success": True, "message": "Query already closed"}), 200
+
+    allowed = _can_access_query(closed_by_admin, emp_type, query_obj) and (
+        query_obj.admin_id == closed_by_admin.id
+        or _department_staff_can_close(emp_type)
+    )
+    if not allowed:
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    query_obj.status = "Closed"
+
+    _create_query_notification_to_owner(
+        query_obj=query_obj,
+        title=f"Query Closed: {query_obj.title}",
+        body=f"Your query has been closed by {closed_by_email}.",
+        actor_admin_id=closed_by_admin.id if closed_by_admin else None,
+    )
+
+    db.session.commit()
+
+    # 🔔 Send compiled chat email
+    notify_query_event(query_obj, action="closed")
+    summary_text = " ".join((query_obj.query_text or "").split()[:20])
+    attachments = []
+    if query_obj.photo:
+        try:
+            attachments = json.loads(query_obj.photo)
+        except json.JSONDecodeError:
+            attachments = []
+    send_query_closed_email(
+        query_obj=query_obj,
+        closed_by_email=closed_by_email,
+        summary_text=summary_text,
+        attachments=attachments
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Query closed and notification sent"
+    }), 200
+
+
+
+
+
+@query.route("/api/managers/employees", methods=["GET"])
+@jwt_required()
+def list_employees_for_manager_picker():
+    """List active employees for L1/L2/L3 typeahead. Returns empty when q is empty; when q is set, returns up to 50 matches."""
+    search = (request.args.get("q") or "").strip().lower()
+    if not search:
+        return jsonify({"success": True, "employees": []}), 200
+    q = Admin.query.filter_by(is_active=True, is_exited=False).filter(
+        db.or_(
+            func.lower(func.coalesce(Admin.first_name, "")).contains(search),
+            func.lower(func.coalesce(Admin.email, "")).contains(search),
+            func.lower(func.coalesce(Admin.emp_id, "")).contains(search),
+        )
+    )
+    admins = q.order_by(Admin.first_name.asc()).limit(50).all()
+    return jsonify({
+        "success": True,
+        "employees": [
+            {
+                "id": a.id,
+                "name": a.first_name or a.email or "",
+                "email": a.email or "",
+                "emp_id": a.emp_id or "",
+                "mobile": a.mobile or "",
+            }
+            for a in admins
+        ]
+    }), 200
+
+
+@query.route("/api/managers/search", methods=["GET"])
+@jwt_required()
+def search_managers_api():
+
+    circle = request.args.get("circle")
+    emp_type = request.args.get("emp_type")
+    identifier = request.args.get("identifier")
+
+    admins = []
+
+    if circle and emp_type:
+        if identifier:
+            admins = Admin.query.filter(
+                Admin.circle == circle,
+                Admin.emp_type == emp_type,
+                (Admin.email == identifier) | (Admin.emp_id == identifier)
+            ).all()
+        else:
+            admins = Admin.query.filter_by(
+                circle=circle,
+                emp_type=emp_type
+            ).all()
+
+    elif identifier:
+        admins = Admin.query.filter(
+            (Admin.email == identifier) | (Admin.emp_id == identifier)
+        ).all()
+
+    if not admins:
+        return jsonify({
+            "success": False,
+            "message": "No matching employees found"
+        }), 404
+
+    return jsonify({
+        "success": True,
+        "count": len(admins),
+        "employees": [
+            {
+                "id": a.id,
+                "name": a.first_name,
+                "email": a.email,
+                "emp_id": a.emp_id,
+                "circle": a.circle,
+                "emp_type": a.emp_type
+            } for a in admins
+        ]
+    }), 200
+
+
+
+@query.route("/api/managers/contact", methods=["GET"])
+@jwt_required()
+def get_manager_contact_api():
+    """Get manager contact for circle + emp_type (+ optional user_email).
+    Tries employee-specific row first; if not found, falls back to group-level (user_email null/empty)
+    so existing names show in Update Manager form. Uses case-insensitive match for circle/user_type."""
+    circle = (request.args.get("circle") or "").strip()
+    emp_type = (request.args.get("emp_type") or "").strip()
+    user_email_param = (request.args.get("user_email") or "").strip() or None
+
+    if not circle or not emp_type:
+        return jsonify({
+            "success": False,
+            "message": "circle and emp_type are required"
+        }), 400
+
+    circle_lower = circle.lower()
+    emp_type_lower = emp_type.lower()
+    contact = None
+
+    # 1) Try employee-specific row (exact user_email)
+    if user_email_param:
+        contact = ManagerContact.query.filter(
+            func.lower(ManagerContact.circle_name) == circle_lower,
+            func.lower(ManagerContact.user_type) == emp_type_lower,
+            ManagerContact.user_email == user_email_param
+        ).first()
+    # 2) Fall back to group-level (user_email null or '') so form shows existing L1/L2/L3
+    if not contact:
+        contact = ManagerContact.query.filter(
+            func.lower(ManagerContact.circle_name) == circle_lower,
+            func.lower(ManagerContact.user_type) == emp_type_lower,
+            (ManagerContact.user_email.is_(None)) | (ManagerContact.user_email == "")
+        ).first()
+
+    if not contact:
+        return jsonify({
+            "success": True,
+            "exists": False,
+            "data": None
+        }), 200
+
+    l1 = get_manager_detail(contact, "l1")
+    l2 = get_manager_detail(contact, "l2")
+    l3 = get_manager_detail(contact, "l3")
+    return jsonify({
+        "success": True,
+        "exists": True,
+        "data": {
+            "circle_name": contact.circle_name,
+            "user_type": contact.user_type,
+            "user_email": contact.user_email or "",
+            "l1_admin_id": contact.l1_admin_id,
+            "l2_admin_id": contact.l2_admin_id,
+            "l3_admin_id": contact.l3_admin_id,
+            "l1": {"id": l1["id"], "name": l1["name"], "mobile": l1["mobile"], "email": l1["email"]},
+            "l2": {"id": l2["id"], "name": l2["name"], "mobile": l2["mobile"], "email": l2["email"]},
+            "l3": {"id": l3["id"], "name": l3["name"], "mobile": l3["mobile"], "email": l3["email"]},
+        }
+    }), 200
+
+
+
+@query.route("/api/managers/contact", methods=["POST"])
+@jwt_required()
+def upsert_manager_contact_api():
+    """Upsert manager contact. Uses case-insensitive lookup so we update existing row
+    even if case differs; normalizes circle_name/user_type for new rows."""
+    data = request.get_json() or {}
+
+    circle = (data.get("circle_name") or "").strip()
+    emp_type = (data.get("user_type") or "").strip()
+    user_email_raw = data.get("user_email")
+    user_email = (user_email_raw if user_email_raw is not None else "").strip() or None
+
+    if not circle or not emp_type:
+        return jsonify({
+            "success": False,
+            "message": "circle_name and user_type are required"
+        }), 400
+
+    ids = [
+        int(x) if x is not None and str(x).strip() else None
+        for x in (data.get("l1_admin_id"), data.get("l2_admin_id"), data.get("l3_admin_id"))
+    ]
+    if ids[0] and ids[1] and ids[0] == ids[1]:
+        return jsonify({"success": False, "message": "L1 and L2 must be different people"}), 400
+    if ids[0] and ids[2] and ids[0] == ids[2]:
+        return jsonify({"success": False, "message": "L1 and L3 must be different people"}), 400
+    if ids[1] and ids[2] and ids[1] == ids[2]:
+        return jsonify({"success": False, "message": "L2 and L3 must be different people"}), 400
+
+    circle_lower = circle.lower()
+    emp_type_lower = emp_type.lower()
+    contact = None
+
+    if user_email:
+        # Employee-specific: find or create row for this email
+        contact = ManagerContact.query.filter(
+            func.lower(ManagerContact.circle_name) == circle_lower,
+            func.lower(ManagerContact.user_type) == emp_type_lower,
+            ManagerContact.user_email == user_email
+        ).first()
+        if not contact:
+            contact = ManagerContact(circle_name=circle, user_type=emp_type, user_email=user_email)
+            db.session.add(contact)
+    else:
+        # Group-level: find or create row with user_email null/empty
+        contact = ManagerContact.query.filter(
+            func.lower(ManagerContact.circle_name) == circle_lower,
+            func.lower(ManagerContact.user_type) == emp_type_lower,
+            (ManagerContact.user_email.is_(None)) | (ManagerContact.user_email == "")
+        ).first()
+        if not contact:
+            contact = ManagerContact(circle_name=circle, user_type=emp_type, user_email=None)
+            db.session.add(contact)
+
+    for level in ("l1", "l2", "l3"):
+        admin_id = data.get(f"{level}_admin_id")
+        admin_id = int(admin_id) if admin_id is not None and str(admin_id).strip() else None
+        setattr(contact, f"{level}_admin_id", admin_id)
+
+    try:
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": "Manager contact saved successfully"
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500

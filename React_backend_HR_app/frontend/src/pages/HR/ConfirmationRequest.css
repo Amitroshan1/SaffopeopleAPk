@@ -1,0 +1,232 @@
+/* Probation Confirmation Queue — aligned with other HR updates pages */
+
+.conf-request-wrapper {
+  min-height: 100%;
+  background: #f0f4f8;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79, 70, 229, 0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.04), transparent);
+  padding: 24px 20px 40px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+  color: #0f172a;
+}
+
+.conf-request-container {
+  width: 100%;
+  max-width: 1100px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.btn-back-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: fit-content;
+  margin: 20px 24px 0;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.btn-back-tab:hover {
+  background: #f8fafc;
+  border-color: #c7d2fe;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08);
+  transform: none;
+}
+
+.conf-request-card {
+  background: #ffffff;
+  width: 100%;
+  padding: 20px 24px 28px;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+
+.conf-request-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 14px;
+}
+
+.conf-request-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.25rem;
+  color: #0f172a;
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.conf-request-header .btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.conf-request-header .btn-refresh:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #c7d2fe;
+}
+
+.conf-request-header .btn-refresh:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.conf-subtext {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.empty-state-container {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+}
+
+.empty-state-container p {
+  color: #64748b;
+  font-size: 0.9375rem;
+  margin: 0;
+  font-weight: 500;
+}
+
+.empty-state-container .conf-subtext {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.conf-loading,
+.conf-error {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.conf-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+
+.conf-table-section {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.conf-request-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.conf-request-table th {
+  background: #f8fafc;
+  color: #64748b;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.conf-request-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.conf-request-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.conf-open-reviews {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #4f46e5;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.conf-open-reviews:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .conf-request-wrapper {
+    padding: 16px 12px 32px;
+  }
+
+  .conf-request-container {
+    border-radius: 12px;
+  }
+
+  .conf-request-card {
+    padding: 16px 16px 24px;
+  }
+
+  .conf-request-header h3 {
+    font-size: 1.1rem;
+  }
+
+  .btn-back-tab {
+    margin: 16px 16px 0;
+    font-size: 0.8125rem;
+  }
+
+  .empty-state-container {
+    padding: 28px 16px;
+  }
+}

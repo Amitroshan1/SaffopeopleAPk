@@ -1,0 +1,304 @@
+/* Add News Feed – dashboard styling, fully responsive */
+
+:root {
+  --nf-body-bg: #f4f7f6;
+  --nf-card-bg: #ffffff;
+  --nf-text-dark: #111827;
+  --nf-text-muted: #6b7280;
+  --nf-border: #e5e7eb;
+  --nf-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+@keyframes nfCardEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.newsfeed-page-container {
+  min-height: 100%;
+  width: 100%;
+  background: var(--nf-body-bg);
+  padding: 24px 24px 32px;
+  box-sizing: border-box;
+}
+
+.newsfeed-content {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Back button – dashboard-style secondary (same as SignUp) */
+.btn-back-updates {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  margin-bottom: 20px;
+  background: var(--nf-card-bg);
+  border: 1px solid var(--nf-border);
+  border-radius: 8px;
+  color: var(--nf-text-dark);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-shadow: var(--nf-shadow);
+}
+
+.btn-back-updates:hover {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  transform: translateX(-2px);
+}
+
+.announcement-card {
+  background: var(--nf-card-bg);
+  border-radius: 12px;
+  box-shadow: var(--nf-shadow);
+  border: 1px solid var(--nf-border);
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+  animation: nfCardEnter 0.45s ease-out forwards;
+}
+
+.announcement-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 12px 0 0 12px;
+  background: linear-gradient(180deg, #4f46e5 0%, #6366f1 100%);
+}
+
+.announcement-card:hover {
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.15);
+}
+
+.newsfeed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.newsfeed-success {
+  padding: 12px 16px !important;
+  margin: 0 0 16px 0 !important;
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-radius: 8px;
+  color: #166534 !important;
+  font-size: 0.9rem;
+}
+
+.newsfeed-error {
+  padding: 12px 16px !important;
+  margin: 0 0 16px 0 !important;
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  border-radius: 8px;
+  color: #b91c1c !important;
+  font-size: 0.9rem;
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-item label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--nf-text-muted);
+}
+
+.form-item input,
+.form-item select,
+.form-item textarea {
+  padding: 12px 14px;
+  border: 1px solid var(--nf-border);
+  border-radius: 8px;
+  background: var(--nf-card-bg);
+  font-size: 0.9rem;
+  color: var(--nf-text-dark);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-item input:focus,
+.form-item select:focus,
+.form-item textarea:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.form-item textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+#news-file { display: none; }
+
+.file-input-wrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--nf-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.custom-file-upload {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+}
+
+.choose-btn {
+  padding: 10px 16px;
+  background: rgba(79, 70, 229, 0.1);
+  color: #4f46e5;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.choose-btn:hover {
+  background: rgba(79, 70, 229, 0.15);
+}
+
+.file-name {
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  color: var(--nf-text-muted);
+}
+
+.form-submit { margin-top: 8px; }
+
+.btn-post {
+  padding: 12px 24px;
+  background: linear-gradient(to right, #4f46e5, #3b82f6, #10b981);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+  width: fit-content;
+}
+
+.btn-post:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+}
+
+.btn-post:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+
+.newsfeed-history {
+  margin-top: 24px;
+  border-top: 1px solid var(--nf-border);
+  padding-top: 16px;
+}
+
+.newsfeed-history h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--nf-text-dark);
+}
+
+.newsfeed-history-table-wrapper {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.newsfeed-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.newsfeed-history-table th,
+.newsfeed-history-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--nf-border);
+  text-align: left;
+}
+
+.newsfeed-history-table th {
+  font-weight: 600;
+  color: var(--nf-text-muted);
+  background: #f9fafb;
+}
+
+.newsfeed-history-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.newsfeed-delete-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.newsfeed-delete-btn:hover {
+  background: #fee2e2;
+}
+
+.newsfeed-send-email-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.newsfeed-send-email-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--nf-text-dark);
+  cursor: pointer;
+}
+
+.newsfeed-send-email-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.newsfeed-send-email-hint {
+  font-size: 0.85rem;
+  color: var(--nf-text-muted);
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .newsfeed-page-container { padding: 16px 16px 24px; }
+  .announcement-card { padding: 20px; }
+  .newsfeed-form { gap: 18px; }
+}
+
+@media (max-width: 576px) {
+  .newsfeed-page-container { padding: 12px 12px 20px; }
+  .btn-back-link { width: 100%; justify-content: center; }
+  .announcement-card { padding: 16px; }
+  .form-item input, .form-item select, .form-item textarea { font-size: 16px; }
+  .btn-post { width: 100%; }
+}
+
+@media (max-width: 400px) {
+  .newsfeed-page-container { padding: 10px 10px 16px; }
+  .announcement-card { padding: 14px; }
+}

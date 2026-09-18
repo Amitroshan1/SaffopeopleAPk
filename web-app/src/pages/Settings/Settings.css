@@ -1,0 +1,72 @@
+.settings-page {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 12px 6px 24px;
+}
+
+.settings-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.settings-title-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.settings-title-icon {
+  font-size: 1.1rem;
+  color: #4f46e5;
+  margin-top: 4px;
+}
+
+.settings-title-row h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #111827;
+}
+
+.settings-title-row p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #1f2937;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-action:hover {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+}
+
+@media (max-width: 640px) {
+  .settings-actions {
+    grid-template-columns: 1fr;
+  }
+}
+

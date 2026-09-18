@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 280" width="360" height="280">
+  <rect x="0" y="0" width="360" height="280" fill="#ffffff"/>
+
+  <!-- Outer trapezoid -->
+  <polygon points="60,220 300,220 240,70 120,70" fill="none" stroke="#2b2b2b" stroke-width="4"/>
+
+  <!-- Inner verticals -->
+  <line x1="120" y1="70" x2="120" y2="220" stroke="#2b2b2b" stroke-width="4"/>
+  <line x1="240" y1="70" x2="240" y2="220" stroke="#2b2b2b" stroke-width="4"/>
+
+  <!-- Inner diagonals -->
+  <line x1="120" y1="70" x2="240" y2="220" stroke="#2b2b2b" stroke-width="4"/>
+  <line x1="180" y1="70" x2="120" y2="220" stroke="#2b2b2b" stroke-width="4"/>
+  <line x1="240" y1="70" x2="180" y2="220" stroke="#2b2b2b" stroke-width="4"/>
+</svg>

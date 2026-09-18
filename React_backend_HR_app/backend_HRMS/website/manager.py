@@ -1,0 +1,1507 @@
+import calendar
+import os
+from collections import defaultdict
+
+from flask import Blueprint, jsonify, request, current_app, url_for, send_file, send_from_directory
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
+from sqlalchemy import func, or_
+from sqlalchemy.orm import joinedload
+from datetime import date, datetime
+
+from .datetime_utils import utc_now, isoformat_api
+from . import db
+from .models.Admin_models import Admin, AuditLog
+from .models.attendance import LeaveApplication, WorkFromHomeApplication, Punch
+from .models.expense import ExpenseClaimHeader, ExpenseLineItem
+from .models.seperation import Resignation
+from .noc_department_service import (
+    download_noc_document,
+    list_noc_requests,
+    reject_pending_noc_rows_for_resignation,
+    upload_noc_document,
+)
+from .commands.probation import dedupe_probation_review_rows
+from .models.probation import ProbationReview
+from .models.manager_model import ManagerContact
+from .email import send_leave_decision_email, send_wfh_decision_email, send_probation_review_submitted_email, send_probation_review_received_employee_email
+from .employee_photo import photo_url_for_admin
+from .punch_aggregate import ensure_punch_sessions_backfill, recompute_punch_aggregate, serialize_punch_sessions
+from .expense_utils import claim_attach_storage_name
+
+
+manager = Blueprint("manager", __name__)
+
+
+def _norm(value):
+    return (value or "").strip().lower()
+
+
+def _serialize_date(value):
+    return value.isoformat() if value and hasattr(value, "isoformat") else None
+
+
+def _get_current_admin():
+    claims = get_jwt() or {}
+    email = claims.get("email")
+    if email:
+        admin = Admin.query.filter_by(email=email).first()
+        if admin:
+            return admin
+    try:
+        aid = int(get_jwt_identity()) if get_jwt_identity() is not None else None
+    except (TypeError, ValueError):
+        aid = None
+    if aid is not None:
+        return Admin.query.get(aid)
+    return None
+
+
+def _get_contact_for_target(target_admin):
+    from .manager_utils import resolve_manager_contact_for_employee
+
+    return resolve_manager_contact_for_employee(target_admin)
+
+
+def _is_manager_for_target(approver_admin, target_admin):
+    """True if approver is L1/L2/L3 in target's ManagerContact."""
+    if not approver_admin or not target_admin:
+        return False
+    if approver_admin.id == target_admin.id:
+        return _self_approval_allowed_for_admin(approver_admin)
+    contact = _get_contact_for_target(target_admin)
+    if not contact:
+        return False
+    from .manager_utils import is_manager_in_contact
+    return is_manager_in_contact(contact, approver_admin)
+
+
+def _self_approval_allowed_for_admin(admin):
+    """Allow self-approval only for explicitly allowed roles configured in app config."""
+    if not admin:
+        return False
+    configured = current_app.config.get("MANAGER_SELF_APPROVAL_ROLES", "")
+    allowed = {
+        str(x).strip().lower().replace("-", " ")
+        for x in str(configured).split(",")
+        if str(x).strip()
+    }
+    role = (getattr(admin, "emp_type", None) or "").strip().lower().replace("-", " ")
+    return role in allowed
+
+
+def _append_self_approval_audit_if_needed(*, approver, target, entity_name, entity_id, action, final_status):
+    if not approver or not target:
+        return
+    if approver.id != target.id:
+        return
+    try:
+        db.session.add(
+            AuditLog(
+                action=(
+                    f"SELF_APPROVAL|entity={entity_name}|entity_id={entity_id}|"
+                    f"action={action}|status={final_status}"
+                ),
+                performed_by=approver.email,
+                target_email=target.email,
+            )
+        )
+    except Exception:
+        current_app.logger.warning(
+            "Failed to append self-approval audit for %s:%s", entity_name, entity_id
+        )
+
+
+def _team_member_admin_ids(manager_admin):
+    rows = (
+        Admin.query.filter(func.coalesce(Admin.is_exited, False) == False)
+        .order_by(Admin.first_name.asc(), Admin.id.asc())
+        .all()
+    )
+    ids = []
+    for row in rows:
+        if row.id == manager_admin.id:
+            continue
+        if not _is_manager_for_target(manager_admin, row):
+            continue
+        ids.append(row.id)
+    return ids
+
+
+def _display_name_for_admin(admin_row):
+    if not admin_row:
+        return "Unknown"
+    emp = getattr(admin_row, "employee_details", None)
+    if emp and (getattr(emp, "name", None) or "").strip():
+        return (emp.name or "").strip()
+    parts = [
+        (getattr(admin_row, "first_name", None) or "").strip(),
+        (getattr(admin_row, "user_name", None) or "").strip(),
+    ]
+    for p in parts:
+        if p:
+            return p
+    email = (getattr(admin_row, "email", None) or "").strip()
+    return email.split("@")[0] if email else "Unknown"
+
+
+def _wfh_approved_on_day(admin_id, day, wfh_by_admin):
+    for w in wfh_by_admin.get(admin_id, ()):
+        if w.start_date <= day <= w.end_date:
+            return True
+    return False
+
+
+def _location_label(punch):
+    ls = getattr(punch, "location_status", None) or ""
+    if ls:
+        return ls.replace("_", " ")
+    if punch.lat is not None and punch.lon is not None:
+        return f"{punch.lat:.5f}, {punch.lon:.5f}"
+    return ""
+
+
+def _ensure_manager_user():
+    """Grant manager access if admin is L1/L2/L3 (or legacy l*_email) on any ManagerContact row."""
+    admin = _get_current_admin()
+    if not admin:
+        return None, (jsonify({"success": False, "message": "Unauthorized user"}), 401)
+    from .manager_utils import user_has_manager_access
+    if not user_has_manager_access(admin):
+        return None, (jsonify({"success": False, "message": "Manager access required"}), 403)
+    return admin, None
+
+
+@manager.route("/scope", methods=["GET"])
+@jwt_required()
+def manager_scope():
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    return jsonify(
+        {
+            "success": True,
+            "scope": {
+                "email": admin.email,
+                "circle": admin.circle,
+                "emp_type": admin.emp_type,
+            },
+        }
+    ), 200
+
+
+@manager.route("/profile", methods=["GET"])
+@jwt_required()
+def manager_profile():
+    """Return current manager's profile for the top card: name, email, mobile, designation, address, scope, photo."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    emp = getattr(admin, "employee_details", None)
+    first_name = (getattr(admin, "first_name", None) or "").strip()
+    user_name = (getattr(admin, "user_name", None) or "").strip()
+    email = (getattr(admin, "email", None) or "").strip()
+    name = first_name or user_name or (email.split("@")[0] if email else None) or "Manager"
+    mobile = (getattr(admin, "mobile", None) or "").strip()
+    designation = None
+    current_address = None
+    photo_url = None
+
+    if emp:
+        if (getattr(emp, "name", None) or "").strip():
+            name = (emp.name or "").strip()
+        if (getattr(emp, "designation", None) or "").strip():
+            designation = (emp.designation or "").strip()
+        if not mobile and (getattr(emp, "mobile", None) or "").strip():
+            mobile = (emp.mobile or "").strip()
+        line1 = (getattr(emp, "present_address_line1", None) or "").strip()
+        if line1:
+            parts = [line1]
+            for attr in ("present_district", "present_state", "present_pincode"):
+                val = (getattr(emp, attr, None) or "").strip()
+                if val:
+                    parts.append(val)
+            current_address = ", ".join(parts)
+        photo_fn = (getattr(emp, "photo_filename", None) or "").strip()
+        if photo_fn:
+            photo_url = url_for("static", filename=f"uploads/{photo_fn}")
+
+    if not designation and (getattr(admin, "emp_type", None) or "").strip():
+        designation = (admin.emp_type or "").strip()
+
+    # Assigned manager scopes from ManagerContact where current user is L1/L2/L3.
+    contacts = (
+        ManagerContact.query.filter(
+            or_(
+                ManagerContact.l1_admin_id == admin.id,
+                ManagerContact.l2_admin_id == admin.id,
+                ManagerContact.l3_admin_id == admin.id,
+            )
+        )
+        .order_by(ManagerContact.circle_name.asc(), ManagerContact.user_type.asc(), ManagerContact.id.asc())
+        .all()
+    )
+    assigned_scopes = []
+    seen_scope_keys = set()
+    for c in contacts:
+        circle = (getattr(c, "circle_name", None) or "").strip()
+        emp_type = (getattr(c, "user_type", None) or "").strip()
+        if not circle and not emp_type:
+            continue
+        key = (circle.lower(), emp_type.lower())
+        if key in seen_scope_keys:
+            continue
+        seen_scope_keys.add(key)
+        assigned_scopes.append({"circle": circle or None, "emp_type": emp_type or None})
+
+    return jsonify({
+        "success": True,
+        "profile": {
+            "name": name,
+            "email": email or None,
+            "mobile": mobile or None,
+            "designation": designation or None,
+            "current_address": current_address or None,
+            "scope": {
+                "circle": getattr(admin, "circle", None),
+                "emp_type": getattr(admin, "emp_type", None),
+            },
+            "assigned_scopes": assigned_scopes,
+            "photo_url": photo_url,
+        },
+    }), 200
+
+
+def _reverse_leave_usage(leave_balance, leave_type, deducted_days):
+    if not leave_balance or deducted_days <= 0:
+        return
+
+    if leave_type == "Privilege Leave":
+        leave_balance.used_privilege_leave = max(
+            0.0, float(leave_balance.used_privilege_leave or 0.0) - deducted_days
+        )
+    elif leave_type == "Casual Leave":
+        leave_balance.used_casual_leave = max(
+            0.0, float(leave_balance.used_casual_leave or 0.0) - deducted_days
+        )
+    elif leave_type == "Compensatory Leave":
+        from .compoff_utils import restore_comp_leave
+        restore_comp_leave(leave_balance.admin_id, deducted_days)
+        leave_balance.used_comp_leave = max(
+            0.0, float(leave_balance.used_comp_leave or 0.0) - deducted_days
+        )
+    elif leave_type == "Half Day Leave":
+        leave_balance.used_casual_leave = max(
+            0.0, float(leave_balance.used_casual_leave or 0.0) - 0.5
+        )
+
+
+def _validate_action_payload():
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        return None, data, (jsonify({"success": False, "message": "action must be approve or reject"}), 400)
+    return action, data, None
+
+
+@manager.route("/leave-requests", methods=["GET"])
+@jwt_required()
+def list_leave_requests():
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    status = (request.args.get("status") or "Pending").strip()
+    query = LeaveApplication.query
+    if status.lower() != "all":
+        query = query.filter(LeaveApplication.status == status)
+
+    rows = query.order_by(LeaveApplication.created_at.desc(), LeaveApplication.id.desc()).all()
+    managed = [row for row in rows if _is_manager_for_target(admin, row.admin)]
+
+    # Comp Off: FIFO credit preview so manager sees expiry / earned dates per request
+    from collections import defaultdict
+    from .compoff_utils import _build_pending_will_use, _simulate_approved_usage
+
+    pending_compoff_by_admin = defaultdict(list)
+    approved_compoff_admins = set()
+    for row in managed:
+        if row.leave_type != "Compensatory Leave":
+            continue
+        if row.status == "Pending":
+            pending_compoff_by_admin[row.admin_id].append(row)
+        elif row.status == "Approved":
+            approved_compoff_admins.add(row.admin_id)
+
+    compoff_preview_by_id = {}
+    for admin_id, leaves in pending_compoff_by_admin.items():
+        preview = _build_pending_will_use(admin_id, leaves)
+        for leave_id, data in preview.items():
+            slices = data.get("will_use") or []
+            expiries = [s.get("expiry_date") for s in slices if s.get("expiry_date")]
+            compoff_preview_by_id[leave_id] = {
+                "will_use": slices,
+                "earliest_expiry": min(expiries) if expiries else None,
+                "warning": data.get("warning"),
+                "approval_ok": data.get("approval_ok", False),
+            }
+
+    for admin_id in approved_compoff_admins:
+        for sim in _simulate_approved_usage(admin_id):
+            lv = sim["leave"]
+            slices = sim.get("consumed_from") or []
+            expiries = [s.get("expiry_date") for s in slices if s.get("expiry_date")]
+            compoff_preview_by_id[lv.id] = {
+                "will_use": slices,
+                "earliest_expiry": min(expiries) if expiries else None,
+                "warning": None,
+                "approval_ok": True,
+            }
+
+    items = []
+    for row in managed:
+        preview = compoff_preview_by_id.get(row.id) if row.leave_type == "Compensatory Leave" else None
+        items.append({
+            "id": row.id,
+            "employee_name": row.admin.first_name,
+            "employee_email": row.admin.email,
+            "emp_id": row.admin.emp_id,
+            "circle": row.admin.circle,
+            "emp_type": row.admin.emp_type,
+            "leave_type": row.leave_type,
+            "reason": row.reason,
+            "start_date": _serialize_date(row.start_date),
+            "end_date": _serialize_date(row.end_date),
+            "status": row.status,
+            "deducted_days": row.deducted_days,
+            "extra_days": row.extra_days,
+            "requested_deducted_days": getattr(row, "requested_deducted_days", 0.0),
+            "sandwich_pl_days": getattr(row, "sandwich_pl_days", 0.0),
+            "created_at": _serialize_date(row.created_at),
+            "compoff_will_use": (preview or {}).get("will_use"),
+            "compoff_earliest_expiry": (preview or {}).get("earliest_expiry"),
+            "compoff_warning": (preview or {}).get("warning"),
+            "compoff_approval_ok": (preview or {}).get("approval_ok"),
+        })
+
+    return jsonify({"success": True, "requests": items}), 200
+
+
+@manager.route("/leave-requests/<int:leave_id>/action", methods=["POST"])
+@jwt_required()
+def act_on_leave_request(leave_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    action, _, payload_err = _validate_action_payload()
+    if payload_err:
+        return payload_err
+
+    leave_obj = LeaveApplication.query.get(leave_id)
+    if not leave_obj:
+        return jsonify({"success": False, "message": "Leave request not found"}), 404
+    if not _is_manager_for_target(approver, leave_obj.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+    if leave_obj.status != "Pending":
+        return jsonify({"success": False, "message": "Only pending requests can be updated"}), 409
+
+    new_status = "Approved" if action == "approve" else "Rejected"
+    leave_obj.status = new_status
+
+    leave_balance = leave_obj.admin.leave_balance if leave_obj.admin else None
+    deducted = float(leave_obj.deducted_days or 0.0)
+    requested_deducted = float(getattr(leave_obj, "requested_deducted_days", 0.0) or 0.0)
+    sandwich_pl = float(getattr(leave_obj, "sandwich_pl_days", 0.0) or 0.0)
+
+    # Apply balance changes ONLY on approval.
+    # Rejected requests do not touch LeaveBalance.
+    if new_status == "Approved" and leave_balance and (deducted > 0 or sandwich_pl > 0):
+        lt = leave_obj.leave_type
+
+        # Privilege Leave
+        if lt == "Privilege Leave":
+            # For PL requests, deducted_days already includes any sandwich effect.
+            current = float(leave_balance.privilege_leave_balance or 0.0)
+            leave_balance.privilege_leave_balance = max(0.0, current - deducted)
+            leave_balance.used_privilege_leave = float(leave_balance.used_privilege_leave or 0.0) + deducted
+
+        # Casual Leave
+        elif lt == "Casual Leave":
+            # Deduct only working-day portion from CL; sandwich days are handled via sandwich_pl_days below.
+            current = float(leave_balance.casual_leave_balance or 0.0)
+            leave_balance.casual_leave_balance = max(0.0, current - requested_deducted)
+            leave_balance.used_casual_leave = float(leave_balance.used_casual_leave or 0.0) + requested_deducted
+
+        # Compensatory Leave (deduct from CompOffGain oldest-first, then sync to LeaveBalance)
+        elif lt == "Compensatory Leave":
+            from .compoff_utils import deduct_comp_leave
+            if not deduct_comp_leave(leave_obj.admin_id, requested_deducted):
+                db.session.rollback()
+                return jsonify({
+                    "success": False,
+                    "message": "Insufficient comp-off balance (may have expired). Please refresh and try again."
+                }), 400
+            leave_balance.used_comp_leave = float(leave_balance.used_comp_leave or 0.0) + requested_deducted
+
+        # Half Day Leave: treat as 0.5 day CL (or PL) unless it was pure LOP (extra_days >= 0.5)
+        elif lt == "Half Day Leave":
+            extra = float(leave_obj.extra_days or 0.0)
+            if extra < 0.5:
+                # There was sufficient balance when applied; now consume from CL if possible, else PL.
+                if float(leave_balance.casual_leave_balance or 0.0) >= 0.5:
+                    leave_balance.casual_leave_balance -= 0.5
+                    leave_balance.used_casual_leave = float(leave_balance.used_casual_leave or 0.0) + 0.5
+                elif float(leave_balance.privilege_leave_balance or 0.0) >= 0.5:
+                    leave_balance.privilege_leave_balance -= 0.5
+                    leave_balance.used_privilege_leave = float(leave_balance.used_privilege_leave or 0.0) + 0.5
+                # else: treat as LOP at this point as well (no balance change)
+
+        # Optional Leave: never touches leave balances
+        elif lt == "Optional Leave":
+            pass
+
+        # Sandwich leave: deduct sandwich days from PL if recorded (leave with pay).
+        if sandwich_pl > 0 and lt not in ("Privilege Leave", "Optional Leave"):
+            current_pl = float(leave_balance.privilege_leave_balance or 0.0)
+            leave_balance.privilege_leave_balance = max(0.0, current_pl - sandwich_pl)
+            leave_balance.used_privilege_leave = float(leave_balance.used_privilege_leave or 0.0) + sandwich_pl
+
+    _append_self_approval_audit_if_needed(
+        approver=approver,
+        target=leave_obj.admin,
+        entity_name="leave",
+        entity_id=leave_obj.id,
+        action=action,
+        final_status=new_status,
+    )
+    db.session.commit()
+
+    # Fire-and-forget email notification; never break API on failure
+    try:
+        send_leave_decision_email(leave_obj, approver, action)
+    except Exception:
+        current_app.logger.warning(
+            "send_leave_decision_email failed for leave_id=%s", getattr(leave_obj, "id", None)
+        )
+
+    return jsonify({"success": True, "message": f"Leave request {new_status.lower()}"}), 200
+
+
+@manager.route("/wfh-requests", methods=["GET"])
+@jwt_required()
+def list_wfh_requests():
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    status = (request.args.get("status") or "Pending").strip()
+    query = WorkFromHomeApplication.query
+    if status.lower() != "all":
+        query = query.filter(WorkFromHomeApplication.status == status)
+
+    rows = query.order_by(WorkFromHomeApplication.created_at.desc(), WorkFromHomeApplication.id.desc()).all()
+    items = []
+    for row in rows:
+        if not _is_manager_for_target(admin, row.admin):
+            continue
+        items.append({
+            "id": row.id,
+            "employee_name": row.admin.first_name,
+            "employee_email": row.admin.email,
+            "emp_id": row.admin.emp_id,
+            "circle": row.admin.circle,
+            "emp_type": row.admin.emp_type,
+            "start_date": _serialize_date(row.start_date),
+            "end_date": _serialize_date(row.end_date),
+            "reason": row.reason,
+            "status": row.status,
+            "created_at": _serialize_date(row.created_at),
+        })
+
+    return jsonify({"success": True, "requests": items}), 200
+
+
+@manager.route("/wfh-requests/<int:wfh_id>/action", methods=["POST"])
+@jwt_required()
+def act_on_wfh_request(wfh_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    action, _, payload_err = _validate_action_payload()
+    if payload_err:
+        return payload_err
+
+    wfh_obj = WorkFromHomeApplication.query.get(wfh_id)
+    if not wfh_obj:
+        return jsonify({"success": False, "message": "WFH request not found"}), 404
+    if not _is_manager_for_target(approver, wfh_obj.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+    if wfh_obj.status != "Pending":
+        return jsonify({"success": False, "message": "Only pending requests can be updated"}), 409
+
+    wfh_obj.status = "Approved" if action == "approve" else "Rejected"
+    _append_self_approval_audit_if_needed(
+        approver=approver,
+        target=wfh_obj.admin,
+        entity_name="wfh",
+        entity_id=wfh_obj.id,
+        action=action,
+        final_status=wfh_obj.status,
+    )
+    db.session.commit()
+
+    try:
+        send_wfh_decision_email(wfh_obj, approver, action)
+    except Exception:
+        current_app.logger.warning(
+            "send_wfh_decision_email failed for wfh_id=%s", getattr(wfh_obj, "id", None)
+        )
+
+    return jsonify({"success": True, "message": f"WFH request {wfh_obj.status.lower()}"}), 200
+
+
+def _claim_status(items):
+    if not items:
+        return "Pending"
+    statuses = {str(i.status or "Pending") for i in items}
+    if statuses == {"Approved"}:
+        return "Approved"
+    if statuses == {"Rejected"}:
+        return "Rejected"
+    if "Pending" in statuses:
+        return "Pending"
+    return "Partially Approved"
+
+
+def _serialize_line_item(li):
+    file_path = claim_attach_storage_name(li.Attach_file) if li.Attach_file else None
+    return {
+        "id": li.id,
+        "sr_no": li.sr_no,
+        "date": _serialize_date(li.date),
+        "purpose": li.purpose,
+        "amount": float(li.amount or 0),
+        "currency": li.currency,
+        "file": li.Attach_file,
+        "file_path": file_path,
+        "has_file": bool(file_path),
+        "status": li.status,
+        "rejection_reason": getattr(li, "rejection_reason", None),
+    }
+
+
+def _serialize_manager_claim(row, line_items):
+    serialized_lines = [_serialize_line_item(li) for li in line_items]
+    derived_status = _claim_status(line_items)
+    total_amount = sum(li["amount"] for li in serialized_lines)
+    currency = serialized_lines[0]["currency"] if serialized_lines else "INR"
+    return {
+        "id": row.id,
+        "employee_name": row.employee_name,
+        "employee_email": row.email,
+        "emp_id": row.emp_id,
+        "designation": row.designation,
+        "circle": row.admin.circle if row.admin else None,
+        "emp_type": row.admin.emp_type if row.admin else None,
+        "project_name": row.project_name,
+        "country_state": row.country_state,
+        "travel_from_date": _serialize_date(row.travel_from_date),
+        "travel_to_date": _serialize_date(row.travel_to_date),
+        "status": derived_status,
+        "total_amount": total_amount,
+        "currency": currency,
+        "line_items": serialized_lines,
+    }
+
+
+def _claim_uploads_root():
+    return os.path.join(current_app.static_folder, "uploads")
+
+
+@manager.route("/claim-requests", methods=["GET"])
+@jwt_required()
+def list_claim_requests():
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    requested_status = (request.args.get("status") or "Pending").strip()
+    rows = ExpenseClaimHeader.query.order_by(ExpenseClaimHeader.id.desc()).all()
+
+    items = []
+    for row in rows:
+        if not _is_manager_for_target(admin, row.admin):
+            continue
+        line_items = ExpenseLineItem.query.filter_by(claim_id=row.id).order_by(ExpenseLineItem.sr_no.asc()).all()
+        derived_status = _claim_status(line_items)
+        if requested_status.lower() != "all" and derived_status.lower() != requested_status.lower():
+            continue
+
+        items.append(_serialize_manager_claim(row, line_items))
+
+    return jsonify({"success": True, "requests": items}), 200
+
+
+@manager.route("/claim-requests/<int:claim_id>", methods=["GET"])
+@jwt_required()
+def get_claim_request(claim_id):
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    claim = ExpenseClaimHeader.query.get(claim_id)
+    if not claim:
+        return jsonify({"success": False, "message": "Claim request not found"}), 404
+    if not _is_manager_for_target(admin, claim.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+
+    line_items = (
+        ExpenseLineItem.query.filter_by(claim_id=claim_id)
+        .order_by(ExpenseLineItem.sr_no.asc())
+        .all()
+    )
+    return jsonify({"success": True, "claim": _serialize_manager_claim(claim, line_items)}), 200
+
+
+@manager.route("/claim-requests/<int:claim_id>/files/<int:line_item_id>", methods=["GET"])
+@jwt_required()
+def serve_claim_line_file(claim_id, line_item_id):
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    claim = ExpenseClaimHeader.query.get(claim_id)
+    if not claim:
+        return jsonify({"success": False, "message": "Claim request not found"}), 404
+    if not _is_manager_for_target(admin, claim.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+
+    line_item = ExpenseLineItem.query.filter_by(id=line_item_id, claim_id=claim_id).first()
+    if not line_item or not line_item.Attach_file:
+        return jsonify({"success": False, "message": "Attachment not found"}), 404
+
+    relative_path = claim_attach_storage_name(line_item.Attach_file)
+    if not relative_path or ".." in relative_path.replace("\\", "/").split("/"):
+        return jsonify({"success": False, "message": "Invalid file path"}), 400
+
+    uploads_root = _claim_uploads_root()
+    full_path = os.path.join(uploads_root, relative_path.replace("\\", "/"))
+    if not os.path.isfile(full_path):
+        return jsonify({"success": False, "message": "File not found on server"}), 404
+
+    directory = os.path.dirname(full_path)
+    filename = os.path.basename(full_path)
+    try:
+        from .pdf_watermark import is_pdf_download, send_download_file
+        if is_pdf_download(filename):
+            return send_download_file(path=full_path, download_name=filename, as_attachment=False)
+        return send_from_directory(directory, filename, as_attachment=False)
+    except Exception:
+        current_app.logger.exception("serve_claim_line_file failed for %s", filename)
+        return jsonify({"success": False, "message": "Unable to open file"}), 500
+
+
+@manager.route("/claim-requests/<int:claim_id>/action", methods=["POST"])
+@jwt_required()
+def act_on_claim_request(claim_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    action, _, payload_err = _validate_action_payload()
+    if payload_err:
+        return payload_err
+
+    claim = ExpenseClaimHeader.query.get(claim_id)
+    if not claim:
+        return jsonify({"success": False, "message": "Claim request not found"}), 404
+    if not _is_manager_for_target(approver, claim.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+
+    new_status = "Approved" if action == "approve" else "Rejected"
+    line_items = ExpenseLineItem.query.filter_by(claim_id=claim_id).all()
+    changed = 0
+    for item in line_items:
+        if item.status == "Pending":
+            item.status = new_status
+            changed += 1
+
+    if changed == 0:
+        return jsonify({"success": False, "message": "No pending line items to update"}), 409
+
+    _append_self_approval_audit_if_needed(
+        approver=approver,
+        target=claim.admin,
+        entity_name="claim",
+        entity_id=claim.id,
+        action=action,
+        final_status=new_status,
+    )
+    db.session.commit()
+    return jsonify({"success": True, "message": f"Claim request {new_status.lower()}"}), 200
+
+
+@manager.route("/resignation-requests", methods=["GET"])
+@jwt_required()
+def list_resignation_requests():
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    status = (request.args.get("status") or "Pending").strip()
+    query = Resignation.query
+    if status.lower() != "all":
+        query = query.filter(Resignation.status == status)
+
+    rows = query.order_by(Resignation.applied_on.desc(), Resignation.id.desc()).all()
+    items = []
+    for row in rows:
+        if not _is_manager_for_target(admin, row.admin):
+            continue
+        items.append({
+            "id": row.id,
+            "employee_name": row.admin.first_name,
+            "employee_email": row.admin.email,
+            "emp_id": row.admin.emp_id,
+            "circle": row.admin.circle,
+            "emp_type": row.admin.emp_type,
+            "resignation_date": _serialize_date(row.resignation_date),
+            "reason": row.reason,
+            "status": row.status,
+            "applied_on": _serialize_date(row.applied_on),
+        })
+
+    return jsonify({"success": True, "requests": items}), 200
+
+
+@manager.route("/resignation-requests/<int:resignation_id>/action", methods=["POST"])
+@jwt_required()
+def act_on_resignation_request(resignation_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    action, _, payload_err = _validate_action_payload()
+    if payload_err:
+        return payload_err
+
+    resignation = Resignation.query.get(resignation_id)
+    if not resignation:
+        return jsonify({"success": False, "message": "Resignation request not found"}), 404
+    if not _is_manager_for_target(approver, resignation.admin):
+        return jsonify({"success": False, "message": "Not allowed for this employee"}), 403
+    if resignation.status != "Pending":
+        return jsonify({"success": False, "message": "Only pending requests can be updated"}), 409
+
+    resignation.status = "Approved" if action == "approve" else "Rejected"
+    if resignation.status == "Rejected":
+        reject_pending_noc_rows_for_resignation(resignation.id)
+    _append_self_approval_audit_if_needed(
+        approver=approver,
+        target=resignation.admin,
+        entity_name="resignation",
+        entity_id=resignation.id,
+        action=action,
+        final_status=resignation.status,
+    )
+    db.session.commit()
+    return jsonify({"success": True, "message": f"Resignation request {resignation.status.lower()}"}), 200
+
+
+@manager.route("/pending-counts", methods=["GET"])
+@jwt_required()
+def pending_request_counts():
+    """Lightweight badge counts — avoids loading 5 full request lists."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    team_ids = list(_team_member_admin_ids(admin))
+    if _self_approval_allowed_for_admin(admin) and admin.id not in team_ids:
+        team_ids.append(admin.id)
+
+    leave_count = 0
+    wfh_count = 0
+    claim_count = 0
+    resignation_count = 0
+    noc_count = 0
+
+    if team_ids:
+        leave_count = (
+            LeaveApplication.query.filter(
+                LeaveApplication.status == "Pending",
+                LeaveApplication.admin_id.in_(team_ids),
+            ).count()
+        )
+        wfh_count = (
+            WorkFromHomeApplication.query.filter(
+                WorkFromHomeApplication.status == "Pending",
+                WorkFromHomeApplication.admin_id.in_(team_ids),
+            ).count()
+        )
+        resignation_count = (
+            Resignation.query.filter(
+                Resignation.status == "Pending",
+                Resignation.admin_id.in_(team_ids),
+            ).count()
+        )
+
+        claim_rows = (
+            ExpenseClaimHeader.query.filter(ExpenseClaimHeader.admin_id.in_(team_ids))
+            .order_by(ExpenseClaimHeader.id.desc())
+            .all()
+        )
+        for row in claim_rows:
+            line_items = (
+                ExpenseLineItem.query.filter_by(claim_id=row.id)
+                .order_by(ExpenseLineItem.sr_no.asc())
+                .all()
+            )
+            if _claim_status(line_items).lower() == "pending":
+                claim_count += 1
+
+    try:
+        noc_items = list_noc_requests("manager", admin, "Pending")
+        noc_count = len(noc_items or [])
+    except Exception:
+        current_app.logger.exception("pending_request_counts: noc count failed")
+        noc_count = 0
+
+    return jsonify({
+        "success": True,
+        "counts": {
+            "leave": leave_count,
+            "wfh": wfh_count,
+            "claim": claim_count,
+            "resignation": resignation_count,
+            "noc": noc_count,
+        },
+    }), 200
+
+
+@manager.route("/noc-requests", methods=["GET"])
+@jwt_required()
+def list_noc_department_requests():
+    """Reporting managers only — rows where department_key is MANAGER (direct/reporting context)."""
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    status_raw = (request.args.get("status") or "All").strip()
+    items = list_noc_requests("manager", approver, status_raw)
+    return jsonify({"success": True, "requests": items}), 200
+
+
+@manager.route("/noc-requests/<int:req_id>/upload", methods=["POST"])
+@jwt_required()
+def upload_noc_department_document(req_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    file = request.files.get("file")
+    out = upload_noc_document("manager", approver, req_id, file)
+    code = out.pop("http", 200)
+    return jsonify({k: v for k, v in out.items()}), code
+
+
+@manager.route("/noc-requests/<int:req_id>/download", methods=["GET"])
+@jwt_required()
+def download_noc_department_document(req_id):
+    approver, err = _ensure_manager_user()
+    if err:
+        return err
+
+    out = download_noc_document("manager", approver, req_id)
+    if not out.get("success"):
+        return jsonify({"success": False, "message": out.get("message", "Error")}), out.get("http", 400)
+
+    from .pdf_watermark import send_download_file
+    return send_download_file(
+        path=out["path"],
+        download_name=out["download_name"],
+        as_attachment=True,
+    )
+
+
+@manager.route("/team-members", methods=["GET"])
+@jwt_required()
+def list_team_members():
+    manager_admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    req_circle_raw = request.args.get("circle")
+    req_type_raw = request.args.get("emp_type")
+    req_circle = _norm(req_circle_raw) if req_circle_raw else ""
+    req_type = _norm(req_type_raw) if req_type_raw else ""
+
+    from .manager_utils import circles_equivalent, emp_types_equivalent
+
+    rows = (
+        Admin.query.filter(func.coalesce(Admin.is_exited, False) == False)
+        .order_by(Admin.first_name.asc(), Admin.id.asc())
+        .all()
+    )
+
+    today = date.today()
+    members = []
+    for row in rows:
+        if row.id == manager_admin.id:
+            continue
+        if not _is_manager_for_target(manager_admin, row):
+            continue
+        if req_circle and req_circle != "all" and not circles_equivalent(row.circle, req_circle_raw):
+            continue
+        if req_type and req_type != "all" and not emp_types_equivalent(row.emp_type, req_type_raw):
+            continue
+        has_wfh_today = (
+            WorkFromHomeApplication.query.filter(
+                WorkFromHomeApplication.admin_id == row.id,
+                WorkFromHomeApplication.status == "Approved",
+                WorkFromHomeApplication.start_date <= today,
+                WorkFromHomeApplication.end_date >= today,
+            )
+            .first()
+            is not None
+        )
+        photo = photo_url_for_admin(row)
+        members.append(
+            {
+                "id": row.id,
+                "name": row.first_name or "Unknown",
+                "role": row.emp_type or "",
+                "circle": row.circle or "",
+                "status": "WFH" if has_wfh_today else "Present",
+                "perf": 75 if has_wfh_today else 90,
+                "photo": photo,
+                "photo_url": photo,
+            }
+        )
+
+    return jsonify({"success": True, "members": members}), 200
+
+
+@manager.route("/team-offboarding", methods=["GET"])
+@jwt_required()
+def list_team_offboarding():
+    """Direct reports in separation / offboarding pipeline."""
+    manager_admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    from .offboarding_service import build_manager_team_offboarding
+
+    members = build_manager_team_offboarding(manager_admin)
+    return jsonify({"success": True, "count": len(members), "members": members}), 200
+
+
+@manager.route("/team-attendance", methods=["GET"])
+@jwt_required()
+def team_attendance():
+    """Punch rows for direct reports plus the logged-in manager in a calendar month (NHQ + Engineering only)."""
+    from .manager_utils import manager_can_view_nhq_engineering_team_attendance
+
+    manager_admin, err = _ensure_manager_user()
+    if err:
+        return err
+    if not manager_can_view_nhq_engineering_team_attendance(manager_admin):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Team attendance is only available for NHQ Engineering managers.",
+                }
+            ),
+            403,
+        )
+
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    today = date.today()
+    if not year or year < 2000 or year > 2100:
+        year = today.year
+    if not month or month < 1 or month > 12:
+        month = today.month
+
+    team_ids = _team_member_admin_ids(manager_admin)
+    mid = getattr(manager_admin, "id", None)
+    if mid is not None and mid not in team_ids:
+        team_ids.append(mid)
+
+    num_days = calendar.monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, num_days)
+
+    wfh_rows = WorkFromHomeApplication.query.filter(
+        WorkFromHomeApplication.admin_id.in_(team_ids),
+        WorkFromHomeApplication.status == "Approved",
+        WorkFromHomeApplication.start_date <= month_end,
+        WorkFromHomeApplication.end_date >= month_start,
+    ).all()
+    wfh_by_admin = defaultdict(list)
+    for w in wfh_rows:
+        wfh_by_admin[w.admin_id].append(w)
+
+    punches = (
+        Punch.query.options(joinedload(Punch.admin).joinedload(Admin.employee_details))
+        .filter(
+            Punch.admin_id.in_(team_ids),
+            Punch.punch_date >= month_start,
+            Punch.punch_date <= month_end,
+        )
+        .order_by(Punch.punch_date.desc(), Punch.admin_id.asc())
+        .all()
+    )
+
+    for p in punches:
+        if not p.id:
+            continue
+        try:
+            if ensure_punch_sessions_backfill(p):
+                recompute_punch_aggregate(p)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    out_rows = []
+    for p in punches:
+        adm = p.admin
+        name = _display_name_for_admin(adm)
+        wfh = bool(getattr(p, "is_wfh", False)) or _wfh_approved_on_day(
+            p.admin_id, p.punch_date, wfh_by_admin
+        )
+        sessions = serialize_punch_sessions(p)
+        has_open = any(s.get("is_open") for s in sessions)
+        out_rows.append(
+            {
+                "date": p.punch_date.isoformat() if p.punch_date else "",
+                "name": name,
+                "punch_in": p.punch_in.strftime("%H:%M:%S") if p.punch_in else "",
+                "punch_out": p.punch_out.strftime("%H:%M:%S") if p.punch_out else "",
+                "wfh": "Yes" if wfh else "—",
+                "location": _location_label(p),
+                "total_hours": str(p.today_work) if p.today_work else "",
+                "sessions": sessions,
+                "session_count": len(sessions),
+                "has_open_session": has_open,
+            }
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "month": month,
+            "year": year,
+            "rows": out_rows,
+        }
+    ), 200
+
+
+@manager.route("/sprint-performance", methods=["GET"])
+@jwt_required()
+def sprint_performance():
+    manager_admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    completed = 0
+    pending = 0
+    overdue = 0
+
+    def _tally(status_value):
+        nonlocal completed, pending, overdue
+        s = _norm(status_value)
+        if s == "approved":
+            completed += 1
+        elif s == "pending":
+            pending += 1
+        elif s == "rejected":
+            overdue += 1
+
+    for row in LeaveApplication.query.all():
+        if _is_manager_for_target(manager_admin, row.admin):
+            _tally(row.status)
+    for row in WorkFromHomeApplication.query.all():
+        if _is_manager_for_target(manager_admin, row.admin):
+            _tally(row.status)
+    for row in Resignation.query.all():
+        if _is_manager_for_target(manager_admin, row.admin):
+            _tally(row.status)
+    for row in ExpenseClaimHeader.query.all():
+        if _is_manager_for_target(manager_admin, row.admin):
+            line_items = ExpenseLineItem.query.filter_by(claim_id=row.id).all()
+            _tally(_claim_status(line_items))
+
+    total = max(completed + pending + overdue, 1)
+    items = [
+        {"name": "Completed Tasks", "value": int(round((completed * 100) / total))},
+        {"name": "Pending Tasks", "value": int(round((pending * 100) / total))},
+        {"name": "Overdue Tasks", "value": int(round((overdue * 100) / total))},
+    ]
+    return jsonify({"success": True, "items": items}), 200
+
+
+# ---------------------------
+# Probation reviews (6-month reminder flow)
+# ---------------------------
+def _serialize_manager_probation_review(pr, target, run_date):
+    from .probation_utils import (
+        STATUS_REMINDER_SENT,
+        STATUS_MANAGER_SUBMITTED,
+        infer_status_from_row,
+        manager_probation_status_label,
+    )
+
+    status = infer_status_from_row(pr)
+    awaiting_hr = status == STATUS_MANAGER_SUBMITTED and bool(pr.reviewed_at) and not pr.hr_decision
+    return {
+        "id": pr.id,
+        "admin_id": pr.admin_id,
+        "employee_name": (getattr(target, "first_name", None) or "").strip() or target.email or "N/A",
+        "employee_email": target.email,
+        "doj": _serialize_date(getattr(target, "doj", None)),
+        "probation_end_date": _serialize_date(pr.probation_end_date),
+        "reminder_sent_at": isoformat_api(pr.reminder_sent_at),
+        "reviewed_at": isoformat_api(pr.reviewed_at),
+        "status": status,
+        "status_label": manager_probation_status_label(pr),
+        "awaiting_hr_decision": awaiting_hr,
+        "rating": pr.rating,
+        "manager_recommendation": pr.manager_recommendation,
+        "feedback": pr.feedback,
+        "hr_decision": pr.hr_decision,
+        "hr_decided_at": isoformat_api(pr.hr_decided_at),
+        "hr_notes": pr.hr_notes,
+        "extended_until": _serialize_date(pr.extended_until),
+        "overdue": bool(
+            run_date
+            and pr.probation_end_date
+            and not pr.reviewed_at
+            and status == STATUS_REMINDER_SENT
+            and pr.probation_end_date < run_date
+        ),
+    }
+
+
+def _list_manager_probation_reviews(manager_admin, status_filter="pending"):
+    from .probation_utils import (
+        infer_status_from_row,
+        STATUS_MANAGER_SUBMITTED,
+        TERMINAL_STATUSES,
+        is_manager_submitted_review_visible,
+        is_probation_review_row_active,
+    )
+
+    status_filter = (status_filter or "pending").strip().lower()
+    if status_filter not in {"pending", "submitted", "all"}:
+        status_filter = "pending"
+
+    removed = dedupe_probation_review_rows()
+    if removed:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    rows = (
+        ProbationReview.query.filter(ProbationReview.reminder_sent_at.isnot(None))
+        .order_by(ProbationReview.probation_end_date.asc(), ProbationReview.id.asc())
+        .all()
+    )
+    out = []
+    pending_total = 0
+    submitted_total = 0
+    run_date = date.today()
+    for pr in rows:
+        target = Admin.query.get(pr.admin_id)
+        if not target or not _is_manager_for_target(manager_admin, target):
+            continue
+
+        row_status = infer_status_from_row(pr)
+        is_pending = (
+            pr.reviewed_at is None
+            and row_status not in TERMINAL_STATUSES
+            and row_status != STATUS_MANAGER_SUBMITTED
+            and is_probation_review_row_active(pr, target, run_date)
+        )
+        is_submitted = pr.reviewed_at is not None and is_manager_submitted_review_visible(
+            pr, target, run_date
+        )
+        if is_pending:
+            pending_total += 1
+        if is_submitted:
+            submitted_total += 1
+
+        if status_filter == "pending" and not is_pending:
+            continue
+        if status_filter == "submitted" and not is_submitted:
+            continue
+        if status_filter == "all" and not (is_pending or is_submitted):
+            continue
+
+        out.append(_serialize_manager_probation_review(pr, target, run_date))
+
+    summary = {
+        "total": len(out),
+        "pending": pending_total,
+        "submitted": submitted_total,
+    }
+
+    return {"reviews": out, "summary": summary}
+
+
+@manager.route("/probation-reviews", methods=["GET"])
+@jwt_required()
+def probation_reviews():
+    """List probation reviews for manager: pending, submitted, or all."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    status_filter = request.args.get("status") or "all"
+    payload = _list_manager_probation_reviews(admin, status_filter)
+    return jsonify({"success": True, **payload}), 200
+
+
+@manager.route("/probation-reviews-due", methods=["GET"])
+@jwt_required()
+def probation_reviews_due():
+    """Backward-compatible alias: pending manager probation reviews only."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    payload = _list_manager_probation_reviews(admin, "pending")
+    return jsonify({"success": True, "reviews": payload["reviews"]}), 200
+
+
+@manager.route("/probation-review", methods=["POST"])
+@jwt_required()
+def submit_probation_review():
+    """Manager submits probation feedback; notifies HR."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    data = request.get_json() or {}
+    review_id = data.get("probation_review_id") or data.get("id")
+    feedback = (data.get("feedback") or "").strip()
+    rating = (data.get("rating") or "").strip()
+    manager_recommendation = (data.get("manager_recommendation") or data.get("recommendation") or "").strip()
+
+    if not review_id:
+        return jsonify({"success": False, "message": "probation_review_id required"}), 400
+    if not rating:
+        return jsonify({"success": False, "message": "rating is required"}), 400
+    if not manager_recommendation:
+        return jsonify({"success": False, "message": "manager_recommendation is required"}), 400
+
+    from .probation_utils import (
+        MANAGER_RECOMMENDATIONS,
+        STATUS_MANAGER_SUBMITTED,
+        TERMINAL_STATUSES,
+        infer_status_from_row,
+        is_probation_review_row_active,
+    )
+    if manager_recommendation not in MANAGER_RECOMMENDATIONS:
+        return jsonify({"success": False, "message": "Invalid manager_recommendation"}), 400
+
+    pr = ProbationReview.query.get(review_id)
+    if not pr:
+        return jsonify({"success": False, "message": "Probation review not found"}), 404
+    current_status = infer_status_from_row(pr)
+    if current_status in TERMINAL_STATUSES:
+        return jsonify({"success": False, "message": "Review is already closed by HR"}), 400
+    if pr.reviewed_at or current_status == STATUS_MANAGER_SUBMITTED:
+        return jsonify({"success": False, "message": "Review already submitted"}), 400
+
+    target = Admin.query.get(pr.admin_id)
+    if not target:
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+    if not _is_manager_for_target(admin, target):
+        return jsonify({"success": False, "message": "You are not the manager for this employee"}), 403
+    if not is_probation_review_row_active(pr, target, date.today()):
+        return jsonify({"success": False, "message": "This probation review is no longer active"}), 400
+
+    pr.reviewed_at = utc_now()
+    pr.reviewed_by_admin_id = admin.id
+    pr.feedback = feedback or None
+    pr.rating = rating
+    pr.manager_recommendation = manager_recommendation or None
+    pr.status = STATUS_MANAGER_SUBMITTED
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    manager_name = (getattr(admin, "first_name", None) or "").strip() or admin.email or "Manager"
+    send_probation_review_submitted_email(
+        target,
+        manager_name,
+        feedback_preview=feedback,
+        rating=rating,
+        recommendation=manager_recommendation,
+    )
+    send_probation_review_received_employee_email(
+        target,
+        manager_name,
+        probation_end_date=pr.probation_end_date,
+    )
+    pr.hr_notified_at = utc_now()
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Review submitted; HR has been notified.",
+        "probation_review_id": pr.id,
+    }), 200
+
+
+@manager.route("/increment-proposals", methods=["POST"])
+@jwt_required()
+def manager_propose_increment():
+    """Manager proposes annual increment for a direct report."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    from datetime import date as date_cls
+    from .compensation_service import manager_propose_increment
+
+    data = request.get_json(silent=True) or {}
+    target_admin_id = data.get("admin_id") or data.get("target_admin_id")
+    proposed_ctc = data.get("proposed_annual_ctc")
+    if not target_admin_id or proposed_ctc is None:
+        return jsonify({"success": False, "message": "admin_id and proposed_annual_ctc are required"}), 400
+
+    eff_from = None
+    if data.get("effective_from"):
+        eff_from = date_cls.fromisoformat(str(data["effective_from"])[:10])
+
+    try:
+        row = manager_propose_increment(
+            admin,
+            target_admin_id=int(target_admin_id),
+            proposed_annual_ctc=float(proposed_ctc),
+            effective_from=eff_from,
+            manager_notes=data.get("manager_notes"),
+            increment_cycle_id=data.get("increment_cycle_id"),
+        )
+        return jsonify({"success": True, "proposal": row.to_dict()}), 201
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+
+@manager.route("/compensation-band-hint", methods=["GET"])
+@jwt_required()
+def manager_compensation_band_hint():
+    """Band min/mid/max for a direct report (increment proposal guardrails)."""
+    admin, err = _ensure_manager_user()
+    if err:
+        return err
+
+    target_id = request.args.get("admin_id", type=int)
+    if not target_id:
+        return jsonify({"success": False, "message": "admin_id is required"}), 400
+    target = Admin.query.get(target_id)
+    if not target:
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+    if not _is_manager_for_target(admin, target):
+        return jsonify({"success": False, "message": "You are not the manager for this employee"}), 403
+
+    from .compensation_band_service import band_hint_for_admin_id
+
+    hint = band_hint_for_admin_id(target_id)
+    return jsonify({"success": True, **(hint or {})}), 200
+
+
+@manager.route("/leave-requests/on-behalf", methods=["POST"])
+@jwt_required()
+def manager_apply_leave_on_behalf():
+    """Manager applies future leave for a direct report (status Pending)."""
+    from zoneinfo import ZoneInfo
+    from . import leave_settings as leave_cfg
+    from .leave_proxy_service import create_proxy_leave_application, LeaveProxyError
+    from .email import send_leave_applied_email
+
+    manager_admin, err = _ensure_manager_user()
+    if err:
+        return err
+    if not leave_cfg.manager_on_behalf_allowed():
+        return jsonify({"success": False, "message": "Manager on-behalf leave is disabled by policy"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    admin_id = payload.get("admin_id")
+    if not admin_id:
+        return jsonify({"success": False, "message": "admin_id is required"}), 400
+    try:
+        admin_id = int(admin_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid admin_id"}), 400
+
+    leave_type = (payload.get("leave_type") or "").strip()
+    reason = (payload.get("reason") or "").strip()
+    if not leave_type or not reason:
+        return jsonify({"success": False, "message": "leave_type and reason are required"}), 400
+    if len(reason) < 10:
+        return jsonify({"success": False, "message": "Reason must be at least 10 characters long"}), 400
+
+    try:
+        start_date = datetime.strptime(payload.get("start_date"), "%Y-%m-%d").date()
+        end_date = datetime.strptime(payload.get("end_date"), "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    if end_date < start_date:
+        return jsonify({"success": False, "message": "End date cannot be before start date"}), 400
+
+    today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    if start_date < today_ist or end_date < today_ist:
+        return jsonify({
+            "success": False,
+            "message": "Managers can apply leave only for today or future dates. Contact HR for backdated leave.",
+        }), 400
+
+    target = Admin.query.get(admin_id)
+    if not target:
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+    if not _is_manager_for_target(manager_admin, target):
+        return jsonify({"success": False, "message": "You are not the manager for this employee"}), 403
+
+    try:
+        leave_obj, _, _ = create_proxy_leave_application(
+            admin_id=admin_id,
+            leave_type=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason[:255],
+            status="Pending",
+            applied_by_admin_id=manager_admin.id,
+            applied_on_behalf=True,
+        )
+        db.session.commit()
+    except LeaveProxyError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "message": exc.message}), exc.status_code
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("manager on-behalf leave failed: %s", exc, exc_info=True)
+        return jsonify({"success": False, "message": str(exc) or "Failed to apply leave"}), 500
+
+    try:
+        send_leave_applied_email(target, leave_obj)
+    except Exception:
+        current_app.logger.warning("send_leave_applied_email failed for manager on-behalf leave_id=%s", leave_obj.id)
+
+    return jsonify({
+        "success": True,
+        "message": "Leave applied on behalf of team member. Pending approval.",
+        "leave_id": leave_obj.id,
+        "status": leave_obj.status,
+    }), 201
+

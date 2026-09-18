@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SaffoPeople</string>
+    <string name="title_activity_main">SaffoPeople</string>
+    <string name="package_name">com.solviotec.hrms</string>
+    <string name="custom_url_scheme">com.solviotec.hrms</string>
+</resources>

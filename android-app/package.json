@@ -1,0 +1,40 @@
+{
+  "name": "solviotec-hrms-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solviotec HRMS — Android Capacitor shell",
+  "scripts": {
+    "icons": "node scripts/generate-app-icons.cjs",
+    "build:web": "npm run build:mobile --prefix ../web-app",
+    "clean:web": "node scripts/clean-android-web.cjs",
+    "sync": "npm run build:web && npm run clean:web && npx cap sync android",
+    "open": "npx cap open android",
+    "build:debug": "npm run sync && cd android && gradlew.bat assembleDebug",
+    "build:release-apk": "npm run sync && cd android && gradlew.bat assembleRelease",
+    "build:release-aab": "npm run sync && cd android && gradlew.bat bundleRelease",
+    "copy:release": "node scripts/copy-release.cjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/camera": "^7.0.1",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/filesystem": "^7.1.1",
+    "@capacitor/geolocation": "^7.1.2",
+    "@capacitor/keyboard": "^7.0.1",
+    "@capacitor/preferences": "^7.0.1",
+    "@capacitor/share": "^7.0.1",
+    "@capacitor/splash-screen": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "sharp": "^0.34.5",
+    "typescript": "^5.8.2"
+  },
+  "capacitor": {
+    "platforms": [
+      "android"
+    ]
+  }
+}
