@@ -1,0 +1,162 @@
+/**
+ * Native shell polish — keeps the same website look with smoother mobile UX.
+ * Loaded only from main.jsx (web-app mobile build).
+ */
+
+html.capacitor-native {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: auto;
+  --safe-top: 0px;
+}
+
+html.capacitor-native body {
+  padding-top: 0;
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: 0;
+  padding-left: env(safe-area-inset-left, 0px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+html.capacitor-native .main-layout,
+html.capacitor-native .app-layout {
+  min-height: 100dvh;
+}
+
+html.capacitor-native .header-container {
+  top: var(--safe-top, 0px);
+  z-index: 1100;
+  box-sizing: border-box;
+  height: var(--header-height, 72px);
+  min-height: var(--header-height, 72px);
+  max-height: var(--header-height, 72px);
+  padding: 0 10px 0 8px;
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+}
+
+html.capacitor-native .home-scroll-area {
+  top: 0;
+  padding-top: 0;
+}
+
+html.capacitor-native .app-layout > .content-area {
+  top: calc(var(--safe-top, 0px) + var(--header-height, 72px));
+}
+
+html.capacitor-native .content-area {
+  -webkit-overflow-scrolling: touch;
+}
+
+html.capacitor-native button,
+html.capacitor-native .cta-button,
+html.capacitor-native .attendance-btn,
+html.capacitor-native .payslip-download-btn {
+  touch-action: manipulation;
+}
+
+html.capacitor-native input,
+html.capacitor-native select,
+html.capacitor-native textarea {
+  font-size: 16px;
+}
+
+html.capacitor-native .loader {
+  animation: saffo-spin 0.9s linear infinite;
+}
+
+@keyframes saffo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Native app: tighter touch targets and page rhythm */
+html.capacitor-native .manager-tab-card,
+html.capacitor-native .manager-tab-card__badge,
+html.capacitor-native .action-card,
+html.capacitor-native .filter-tab {
+  touch-action: manipulation;
+}
+
+html.capacitor-native .manager-dashboard-wrapper,
+html.capacitor-native .attendance-dashboard-container,
+html.capacitor-native .employee-assets {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+html.capacitor-native .dashboard-content {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+}
+
+/* News feed: ensure items are visible in stacked mobile layout */
+html.capacitor-native .dashboard-content .main-grid .dashboard-top-row .news-feed-section,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section {
+  height: auto !important;
+  min-height: 240px !important;
+}
+
+html.capacitor-native
+  .dashboard-content
+  .main-grid
+  .dashboard-top-row
+  .news-feed-section
+  .news-feed-scroll-viewport,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section .news-feed-scroll-viewport {
+  min-height: 160px;
+  max-height: min(360px, 45vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.capacitor-native
+  .dashboard-content
+  .main-grid
+  .dashboard-top-row
+  .news-feed-section
+  .news-feed-list,
+html.capacitor-native .main-grid .dashboard-top-row .news-feed-section .news-feed-list {
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+html.capacitor-native .hr-main-container.hr-panel-root .hr-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+/* Phone pages scroll with the document. A fixed inner box does not receive swipes. */
+html.capacitor-native,
+html.capacitor-native body {
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
+}
+
+html.capacitor-native .main-layout.app-layout,
+html.capacitor-native .app-layout > .content-area .main-layout,
+html.capacitor-native .attendance-dashboard-container {
+  overflow: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0;
+}
+
+html.capacitor-native .app-layout > .content-area {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  padding-top: calc(var(--safe-top, 0px) + var(--header-height, 72px) + 8px) !important;
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+}

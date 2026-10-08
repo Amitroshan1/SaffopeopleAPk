@@ -1,0 +1,691 @@
+.modal-overlay {
+    --leave-modal-offset: var(--header-height, 80px);
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    z-index: 2147483647;
+    padding: 12px 20px 12px;
+    padding-top: calc(var(--leave-modal-offset) + 8px);
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.modal-content {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 450px;
+    height: auto;
+    min-height: calc(100dvh - var(--leave-modal-offset, 80px) - 20px);
+    max-height: calc(100dvh - var(--leave-modal-offset, 80px) - 20px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 25px;
+    transition: transform 0.3s ease-out;
+    transform: scale(1);
+    margin: 0 auto;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2147483647;
+    box-sizing: border-box;
+}
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.modal-form-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge legacy */
+}
+
+.modal-form-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+/* --- HEADER AND TEXT (Unchanged) --- */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+    flex-shrink: 0;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #333;
+}
+
+.modal-subtext {
+    font-size: 14px;
+    color: #777;
+    margin-bottom: 20px;
+}
+
+.modal-close-button {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #999;
+    cursor: pointer;
+    padding: 5px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.modal-close-button:hover {
+    color: #333;
+}
+
+/* --- FORM ELEMENTS --- */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 8px;
+}
+
+/* Date Group Layout FIX */
+.date-inputs {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.date-input-block {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.date-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.date-input {
+    width: 100%;
+    padding: 10px 12px 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    color: #333;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background: white;
+}
+
+.date-input:focus {
+    border-color: #4f46e5;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+}
+
+/* Floating labels for From / To date */
+.floating-date .date-input {
+    padding: 16px 10px 6px 12px;
+    min-height: 46px;
+    border-radius: 10px;
+    border-color: #e2e8f0;
+    box-sizing: border-box;
+}
+
+.floating-date .floating-label {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    padding: 0 3px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    background: #fff;
+    pointer-events: none;
+    transition: top 0.18s ease, transform 0.18s ease, font-size 0.18s ease, color 0.18s ease;
+    line-height: 1;
+    z-index: 1;
+}
+
+.floating-date.has-value .floating-label,
+.floating-date:focus-within .floating-label {
+    top: 0;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: #4f46e5;
+}
+
+.floating-date:focus-within .date-input {
+    border-color: #4f46e5;
+}
+
+/* Hide empty date placeholder so floating label stays readable */
+.floating-date:not(.has-value):not(:focus-within) .date-input {
+    color: transparent;
+}
+
+.floating-date:not(.has-value):not(:focus-within) .date-input::-webkit-datetime-edit,
+.floating-date:not(.has-value):not(:focus-within) .date-input::-webkit-calendar-picker-indicator {
+    color: transparent;
+    opacity: 0.35;
+}
+
+.floating-date.has-value .date-input,
+.floating-date:focus-within .date-input {
+    color: #334155;
+}
+
+.date-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #777;
+    pointer-events: none;
+}
+
+.reason-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    color: #333;
+    resize: vertical;
+}
+
+.reason-input:focus {
+    border-color: #3a8cff;
+    outline: none;
+}
+
+/* Days Calculation Display */
+.days-display {
+    padding: 10px 0;
+    margin-top: -10px;
+}
+
+.days-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #3a8cff; 
+}
+
+
+/* --- DROPDOWN STYLES (match Leave Requests year/month filters) --- */
+.modal-custom-dropdown {
+    position: relative;
+    cursor: pointer;
+    z-index: 5;
+}
+
+.dropdown-toggle-modal {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid #c7d2fe;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4338ca;
+    background: linear-gradient(135deg, #eef2ff 0%, #eff6ff 100%);
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.dropdown-toggle-modal:hover,
+.modal-custom-dropdown:has(.dropdown-menu-modal) .dropdown-toggle-modal {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+    background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
+}
+
+.dropdown-arrow-modal {
+    flex-shrink: 0;
+    color: #4f46e5;
+    transition: transform 0.3s;
+}
+
+.dropdown-arrow-modal.rotate {
+    transform: rotate(180deg);
+}
+
+.dropdown-menu-modal {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    margin: 0;
+    background-color: #fff;
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    list-style: none;
+    padding: 6px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    z-index: 1001;
+}
+
+.dropdown-item-modal {
+    padding: 10px 14px;
+    font-size: 14px;
+    color: #334155;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.dropdown-item-modal:hover {
+    background-color: #eef2ff;
+    color: #4338ca;
+}
+
+.dropdown-item-modal.selected {
+    background-color: #4f46e5;
+    color: white;
+    font-weight: 600;
+}
+
+/* Visual for disabled dropdown option */
+.dropdown-item-modal.disabled {
+    color: #aaa;
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.dropdown-item-modal.disabled:hover {
+    background-color: #f5f5f5;
+}
+
+.dropdown-disabled .dropdown-toggle-modal {
+    background-color: #f9f9f9;
+    color: #aaa;
+    cursor: not-allowed;
+}
+
+/* --- FOOTER AND BUTTONS (Unchanged) --- */
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    margin-top: 12px;
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.button {
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    min-width: 100px;
+}
+
+.button-cancel {
+    background-color: #f0f0f0;
+    color: #555;
+    border: 1px solid #ddd;
+}
+
+.button-cancel:hover {
+    background-color: #e0e0e0;
+}
+
+.button-submit {
+    background: linear-gradient(to right, #4f46e5, #3b82f6, #10b981);
+    color: #fff;
+    border: none;
+}
+
+.button-submit:hover {
+    background: linear-gradient(to right, #4338ca, #2563eb, #059669);
+    filter: brightness(1.05);
+}
+
+/* --- RESPONSIVENESS --- */
+
+/* Tablet (768px to 1024px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .modal-content {
+        max-width: 500px;
+        padding: 25px;
+    }
+
+    .modal-title {
+        font-size: 20px;
+    }
+}
+
+/* Phone: full-width bottom sheet above bottom nav */
+@media (max-width: 768px) {
+    .apply-leave-modal-overlay.modal-overlay {
+        --leave-modal-offset: var(--header-height, 72px);
+        --leave-bottom-nav: calc(64px + env(safe-area-inset-bottom, 0px));
+        padding: 0;
+        padding-top: var(--leave-modal-offset);
+        align-items: flex-end;
+        background-color: rgba(15, 23, 42, 0.45);
+    }
+
+    .apply-leave-modal-overlay .apply-leave-modal.modal-content {
+        width: 100%;
+        max-width: 100%;
+        min-height: 0;
+        height: calc(100dvh - var(--leave-modal-offset) - var(--leave-bottom-nav));
+        max-height: calc(100dvh - var(--leave-modal-offset) - var(--leave-bottom-nav));
+        margin: 0;
+        padding: 14px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.18);
+    }
+
+    .apply-leave-modal .modal-header {
+        padding-bottom: 10px;
+        margin-bottom: 8px;
+        gap: 8px;
+    }
+
+    .apply-leave-modal .modal-title {
+        font-size: 1.15rem;
+        line-height: 1.25;
+    }
+
+    .apply-leave-modal .modal-close-button {
+        width: 36px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: #f1f5f9;
+        color: #334155;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+
+    .apply-leave-modal .modal-form-scroll {
+        padding-right: 0;
+        padding-bottom: 8px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .apply-leave-modal .modal-form-scroll::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+    }
+
+    .apply-leave-modal .form-group {
+        margin-bottom: 14px;
+    }
+
+    .apply-leave-modal .form-label {
+        font-size: 12px;
+        margin-bottom: 6px;
+        color: #475569;
+    }
+
+    .apply-leave-modal .date-inputs {
+        flex-direction: row;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .apply-leave-modal .date-input-block {
+        flex: 1;
+        min-width: 0;
+        width: auto;
+    }
+
+    .apply-leave-modal .date-input,
+    .apply-leave-modal .reason-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        font-size: 16px; /* prevents iOS zoom */
+        border-radius: 10px;
+        border-color: #e2e8f0;
+        min-height: 46px;
+    }
+
+    .apply-leave-modal .floating-date .date-input {
+        padding: 18px 10px 6px 12px;
+        min-height: 48px;
+        font-size: 16px;
+    }
+
+    .apply-leave-modal .floating-date .floating-label {
+        font-size: 14px;
+        left: 10px;
+    }
+
+    .apply-leave-modal .floating-date.has-value .floating-label,
+    .apply-leave-modal .floating-date:focus-within .floating-label {
+        font-size: 10px;
+    }
+
+    .apply-leave-modal .dropdown-toggle-modal {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        font-size: 16px;
+        border-radius: 10px;
+        min-height: 46px;
+        border-color: #c7d2fe;
+        color: #4338ca;
+        background: linear-gradient(135deg, #eef2ff 0%, #eff6ff 100%);
+    }
+
+    .apply-leave-modal .reason-input {
+        min-height: 96px;
+        resize: vertical;
+    }
+
+    .apply-leave-modal .days-display {
+        margin-top: 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #eff6ff;
+        border: 1px solid #dbeafe;
+    }
+
+    .apply-leave-modal .days-value {
+        font-size: 1.1rem;
+        color: #2563eb;
+        margin: 0;
+    }
+
+    .apply-leave-modal .dropdown-menu-modal {
+        max-height: 200px;
+        border-radius: 10px;
+        z-index: 20;
+    }
+
+    .apply-leave-modal .dropdown-item-modal {
+        padding: 12px 14px;
+        font-size: 15px;
+    }
+
+    .apply-leave-modal .modal-footer {
+        flex-direction: column-reverse;
+        gap: 8px;
+        padding-top: 10px;
+        margin-top: 8px;
+        border-top: 1px solid #eef2f7;
+    }
+
+    .apply-leave-modal .button {
+        width: 100%;
+        min-width: 0;
+        min-height: 46px;
+        padding: 12px 14px;
+        font-size: 15px;
+        border-radius: 10px;
+    }
+
+    .apply-leave-modal .optional-holiday-hint {
+        font-size: 12px;
+        margin-top: 6px;
+    }
+}
+
+@media (max-width: 400px) {
+    .apply-leave-modal.modal-content {
+        padding: 12px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .apply-leave-modal .modal-title {
+        font-size: 1.05rem;
+    }
+}
+
+.disabled-option {
+    color: #bbb;
+    background-color: #f9f9f9;
+    cursor: not-allowed;
+    font-style: italic;
+}
+
+.disabled-option:hover {
+    background-color: #f9f9f9 !important;
+}
+
+.optional-holiday-hint {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #b45309;
+    line-height: 1.4;
+}
+
+.apply-leave-screen {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 8px 16px 24px;
+    box-sizing: border-box;
+}
+
+.apply-leave-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #2563eb;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.apply-leave-back svg {
+    font-size: 14px;
+}
+
+.apply-leave-balances {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.apply-leave-balance {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 10px 8px;
+    text-align: center;
+}
+
+.apply-leave-balance__value {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    color: #1e3a5f;
+    line-height: 1.1;
+}
+
+.apply-leave-balance__label {
+    margin: 4px 0 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.2;
+}
+
+.apply-leave-screen .apply-leave-screen__card.modal-content,
+.apply-leave-screen .apply-leave-modal.modal-content {
+    position: static;
+    z-index: auto;
+    width: 100%;
+    max-width: 100%;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0;
+    overflow: visible !important;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.apply-leave-screen .modal-form,
+.apply-leave-screen .modal-form-scroll {
+    flex: none !important;
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+.app-layout > .content-area:has(.apply-leave-screen) {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+    .apply-leave-screen .apply-leave-modal.modal-content {
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        border-radius: 12px;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+        padding: 16px;
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Saffo People</string>
+    <string name="title_activity_main">Saffo People</string>
+    <string name="package_name">com.saffo.hrms</string>
+    <string name="custom_url_scheme">com.saffo.hrms</string>
+</resources>

@@ -1,0 +1,417 @@
+// import React, { useState } from 'react';
+// import {Card} from './ui/Card';
+// import {Toast} from './ui/Toast'; // Make sure you created this file
+// import './Wfh.css';
+
+// export const Wfh = () => {
+//   const [requests, setRequests] = useState([]);
+//   const [form, setForm] = useState({ from: '', to: '', reason: '' });
+  
+//   // New State for Toast
+//   const [toast, setToast] = useState({ show: false, message: '' });
+
+//   const today = new Date().toISOString().split('T')[0];
+
+//   const isFormValid = form.from !== '' && form.to !== '' && form.reason.trim().length > 0;
+
+//   const handleFromChange = (e) => {
+//     const selectedFrom = e.target.value;
+//     let updatedTo = form.to;
+//     if (form.to && selectedFrom > form.to) {
+//       updatedTo = '';
+//     }
+//     setForm({ ...form, from: selectedFrom, to: updatedTo });
+//   };
+
+//   const handleSubmit = (e) => {
+//     e.preventDefault();
+//     if (!isFormValid) return;
+
+//     const newEntry = {
+//       ...form,
+//       id: Date.now(),
+//       appliedOn: new Date().toLocaleDateString(),
+//       status: 'Pending'
+//     };
+    
+//     setRequests([newEntry, ...requests]);
+//     setForm({ from: '', to: '', reason: '' });
+
+//     // Trigger Success Toast
+//     setToast({ show: true, message: 'WFH Request submitted successfully!' });
+//   };
+
+//   return (
+//     <div className="wfh-page">
+//       {/* 1. Render Toast if active */}
+//       {toast.show && (
+//         <Toast 
+//           message={toast.message} 
+//           type="success" 
+//           onClose={() => setToast({ ...toast, show: false })} 
+//         />
+//       )}
+
+//       <Card title="Apply for Work From Home">
+//         <form className="wfh-form" onSubmit={handleSubmit}>
+//           <div className="form-row">
+//             <div className="input-group">
+//               <label>From Date</label>
+//               <input 
+//                 type="date" 
+//                 value={form.from}
+//                 min={today}
+//                 onChange={handleFromChange} 
+//               />
+//             </div>
+//             <div className="input-group">
+//               <label>To Date</label>
+//               <input 
+//                 type="date" 
+//                 value={form.to}
+//                 min={form.from || today} 
+//                 onChange={e => setForm({...form, to: e.target.value})} 
+//               />
+//             </div>
+//           </div>
+//           <div className="input-group">
+//             <label>Reason</label>
+//             <textarea 
+//               placeholder="Enter reason for work from home..."
+//               value={form.reason}
+//               onChange={e => setForm({...form, reason: e.target.value})}
+//             />
+//           </div>
+          
+//           <button 
+//             type="submit" 
+//             className="btn-submit" 
+//             disabled={!isFormValid}
+//           >
+//             Submit Request
+//           </button>
+//         </form>
+//       </Card>
+
+//       <div className="requests-section u-mt-2">
+//         <Card title="Your WFH Requests">
+//           <div className="table-container">
+//             <table className="data-table">
+//               <thead>
+//                 <tr>
+//                   <th>From Date</th>
+//                   <th>To Date</th>
+//                   <th>Reason</th>
+//                   <th>Applied On</th>
+//                   <th>Status</th>
+//                 </tr>
+//               </thead>
+//               <tbody>
+//                 {requests.length === 0 ? (
+//                   <tr>
+//                     <td colSpan="5" className="empty-state">No WFH requests found.</td>
+//                   </tr>
+//                 ) : (
+//                   requests.map(req => (
+//                     <tr key={req.id} className="fade-in">
+//                       <td>{req.from}</td>
+//                       <td>{req.to}</td>
+//                       <td>{req.reason}</td>
+//                       <td>{req.appliedOn}</td>
+//                       <td><span className="badge-pending">{req.status}</span></td>
+//                     </tr>
+//                   ))
+//                 )}
+//               </tbody>
+//             </table>
+//           </div>
+//         </Card>
+//       </div>
+//     </div>
+//   );
+// };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+import { Toast } from './ui/Toast';
+import './Wfh.css';
+import { useRefreshOnNavigate } from '../../hooks/useRefreshOnNavigate';
+import { formatDate } from '../../utils/dateFormat';
+
+const API_BASE_URL = "/api/leave";
+
+export const Wfh = () => {
+  const [requests, setRequests] = useState([]);
+  const [form, setForm] = useState({ from: '', to: '', reason: '' });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [cancellingId, setCancellingId] = useState(null);
+
+  const today = new Date().toISOString().split('T')[0];
+  const isFormValid = form.from !== '' && form.to !== '' && form.reason.trim().length > 0;
+
+  const fetchWfhRequests = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/wfh`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      let json = {};
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error('Invalid response from server');
+      }
+      if (json.success && json.applications) {
+        setRequests(json.applications);
+      } else {
+        setToast({ show: true, message: json.message || 'Failed to load WFH requests', type: 'error' });
+      }
+    } catch (err) {
+      setToast({ show: true, message: err.message || 'Network error', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useRefreshOnNavigate(() => {
+    fetchWfhRequests();
+  });
+
+  const handleFromChange = (e) => {
+    const selectedFrom = e.target.value;
+    let updatedTo = form.to;
+    if (form.to && selectedFrom > form.to) { updatedTo = ''; }
+    setForm({ ...form, from: selectedFrom, to: updatedTo });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!isFormValid || submitting) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setToast({ show: true, message: 'Please log in to submit WFH request', type: 'error' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/wfh`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          start_date: form.from,
+          end_date: form.to,
+          reason: form.reason.trim()
+        })
+      });
+      let json = {};
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`Server error (${res.status})`);
+      }
+
+      if (json.success) {
+        setForm({ from: '', to: '', reason: '' });
+        setToast({ show: true, message: 'WFH Request submitted successfully!', type: 'success' });
+        await fetchWfhRequests();
+        // Notify attendance page to refresh
+        window.dispatchEvent(new CustomEvent('wfhApplied'));
+      } else {
+        setToast({ show: true, message: json.message || 'Failed to submit', type: 'error' });
+      }
+    } catch (err) {
+      setToast({ show: true, message: err.message || 'Network error', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancelWfh = async (req) => {
+    if (!req?.id || req.status !== 'Pending') return;
+    if (!window.confirm('Cancel this pending WFH request?')) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setToast({ show: true, message: 'Please log in to cancel WFH request', type: 'error' });
+      return;
+    }
+
+    setCancellingId(req.id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/wfh/${req.id}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        setToast({ show: true, message: json.message || 'Failed to cancel WFH request', type: 'error' });
+        return;
+      }
+      setToast({ show: true, message: 'WFH request cancelled.', type: 'success' });
+      await fetchWfhRequests();
+      window.dispatchEvent(new CustomEvent('wfhApplied'));
+    } catch (err) {
+      setToast({ show: true, message: err.message || 'Network error', type: 'error' });
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  return (
+    <div className="wfh-dashboard-container">
+      {toast.show && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type || 'success'} 
+          onClose={() => setToast({ ...toast, show: false })} 
+        />
+      )}
+
+      <div className="wfh-form-card">
+        <h2 className="wfh-page-title">Work From Home Request</h2>
+        <form className="wfh-form" onSubmit={handleSubmit}>
+          <div className="wfh-search-controls">
+          <div className="wfh-dates">
+            <div className="wfh-input-group">
+              <label className="wfh-form-label">From Date</label>
+              <div className={`wfh-date-field${form.from ? " has-value" : ""}`}>
+                <input
+                  type="date"
+                  className="wfh-custom-input"
+                  value={form.from}
+                  min={today}
+                  onChange={handleFromChange}
+                />
+                {!form.from && <span className="wfh-date-placeholder">Select date</span>}
+              </div>
+            </div>
+            <div className="wfh-input-group">
+              <label className="wfh-form-label">To Date</label>
+              <div className={`wfh-date-field${form.to ? " has-value" : ""}`}>
+                <input
+                  type="date"
+                  className="wfh-custom-input"
+                  value={form.to}
+                  min={form.from || today}
+                  onChange={e => setForm({...form, to: e.target.value})}
+                />
+                {!form.to && <span className="wfh-date-placeholder">Select date</span>}
+              </div>
+            </div>
+          </div>
+            <div className="wfh-input-group wfh-input-group-full">
+              <label className="wfh-form-label">Reason for WFH</label>
+              <input 
+                type="text"
+                className="wfh-custom-input"
+                placeholder="Enter reason..."
+                value={form.reason}
+                onChange={e => setForm({...form, reason: e.target.value})}
+              />
+            </div>
+            <div className="wfh-btn-wrapper">
+              <button type="submit" className="wfh-btn-submit" disabled={!isFormValid || submitting}>
+                {submitting ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div className="wfh-table-card">
+        <h3 className="wfh-section-title">Request History</h3>
+        <div className="wfh-table-responsive">
+          <table className="wfh-results-table">
+            <thead>
+              <tr>
+                <th>From Date</th>
+                <th>To Date</th>
+                <th>Reason</th>
+                <th>Applied On</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="wfh-empty-state">Loading...</td>
+                </tr>
+              ) : requests.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="wfh-empty-state">No WFH requests found.</td>
+                </tr>
+              ) : (
+                requests.map(req => (
+                  <tr key={req.id}>
+                    <td data-label="From Date">{formatDate(req.start_date)}</td>
+                    <td data-label="To Date">{formatDate(req.end_date)}</td>
+                    <td data-label="Reason">{req.reason}</td>
+                    <td data-label="Applied On">{formatDate(req.created_at)}</td>
+                    <td data-label="Status">
+                      <span className={['pending','approved','rejected','cancelled'].includes((req.status || 'pending').toLowerCase()) 
+                        ? `wfh-badge wfh-badge-${(req.status || 'pending').toLowerCase()}` 
+                        : 'wfh-badge wfh-badge-default'}>
+                        {req.status || 'Pending'}
+                      </span>
+                    </td>
+                    <td data-label="Actions" className="wfh-actions-col">
+                      {req.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className="wfh-cancel-btn"
+                          onClick={() => handleCancelWfh(req)}
+                          disabled={cancellingId === req.id}
+                        >
+                          {cancellingId === req.id ? 'Cancelling...' : 'Cancel'}
+                        </button>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};

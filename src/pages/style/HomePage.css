@@ -1,0 +1,38 @@
+/* Home page: header fixed, scrollbar starts after header */
+.home-page-layout {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(
+    circle at center,
+    rgba(179, 209, 236, 0.856) 0%,
+    #ffffff 70%
+  );
+}
+
+.home-page-layout .header-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  flex-shrink: 0;
+}
+
+.home-scroll-area {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: radial-gradient(
+    circle at center,
+    rgba(179, 209, 236, 0.856) 0%,
+    #ffffff 70%
+  );
+}
