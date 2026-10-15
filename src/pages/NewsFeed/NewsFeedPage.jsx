@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { formatDateDDMMYYYY } from '../../utils/dateFormat';
 import { fetchVisibleNewsFeed, markNewsFeedSeen } from '../../utils/newsFeed';
 import './NewsFeedPage.css';
@@ -6,12 +7,14 @@ import './NewsFeedPage.css';
 const formatDate = (value) => formatDateDDMMYYYY(value, 'N/A');
 
 export function NewsFeedPage() {
+    const location = useLocation();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            setLoading(true);
             try {
                 const next = await fetchVisibleNewsFeed();
                 if (cancelled) return;
@@ -26,7 +29,7 @@ export function NewsFeedPage() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [location.key, location.state?.refreshAt]);
 
     return (
         <div className="news-feed-page">

@@ -48,14 +48,14 @@ export function areObjectsEqual(obj1, obj2) {
 }
 // --- MANDATORY FIELD LISTS (Used by Validation/Autosave) ---
 export const MANDATORY_FORM_FIELDS = [
-    'fullName', 'fatherName', 'maritalStatus', 'personalEmail',
-    'mobile', 'nationality', 'dateOfBirth', 'gender',
+    'fullName', 'fatherName', 'motherName', 'maritalStatus', 'personalEmail',
+    'mobile', 'nationality', 'dateOfBirth', 'gender', 'bloodGroup',
     'designation', 'employeeId', 'department', 'dateOfJoining',
 ];
 
 export const MANDATORY_FILES_LIST = [
     'aadharFront', 'aadharBack', 'panFront',
-    'panBack', 'passbookFront', 'appointmentLetter'
+    'panBack', 'passbookFront'
 ];
 
 
@@ -119,7 +119,7 @@ export const DOCUMENT_FIELD_LABELS = {
     aadharBack: 'Aadhaar (Back)',
     panFront: 'PAN (Front)',
     panBack: 'PAN (Back)',
-    passbookFront: 'Bank Passbook (Front)',
+    passbookFront: 'Bank Passbook/cheque',
     appointmentLetter: 'Appointment Letter',
 };
 

@@ -248,6 +248,10 @@
     z-index: 5;
 }
 
+.modal-custom-dropdown.is-open {
+    z-index: 40;
+}
+
 .dropdown-toggle-modal {
     display: flex;
     justify-content: space-between;
@@ -291,8 +295,12 @@
     border-radius: 10px;
     list-style: none;
     padding: 6px 0;
-    max-height: 200px;
+    max-height: min(240px, 45vh);
+    overflow-x: hidden;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
     z-index: 1001;
 }
@@ -570,6 +578,19 @@
 
     .apply-leave-modal .modal-title {
         font-size: 1.05rem;
+    }
+}
+
+/* Side-by-side date boxes are too narrow here for "dd/mm/yyyy" plus the calendar icon. */
+@media (max-width: 420px) {
+    .apply-leave-modal .date-inputs {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+    }
+
+    .apply-leave-modal .date-input-block {
+        width: 100%;
     }
 }
 

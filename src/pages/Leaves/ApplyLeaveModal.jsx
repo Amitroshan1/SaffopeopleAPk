@@ -504,11 +504,13 @@ const CustomDropdown = ({ options, currentValue, onChange, label, disabled = fal
 
     return (
         <div 
-            className={`modal-custom-dropdown ${disabled ? 'dropdown-disabled' : ''}`} 
-            onClick={() => !disabled && setIsOpen(!isOpen)}
+            className={`modal-custom-dropdown ${disabled ? 'dropdown-disabled' : ''} ${isOpen ? 'is-open' : ''}`} 
             ref={dropdownRef}
         >
-            <div className="dropdown-toggle-modal">
+            <div
+                className="dropdown-toggle-modal"
+                onClick={() => !disabled && setIsOpen((open) => !open)}
+            >
                 {currentValue || label}
                 <FiChevronDown className={`dropdown-arrow-modal ${isOpen ? 'rotate' : ''}`} />
             </div>

@@ -128,6 +128,7 @@ import { clearPersistedPanelViews } from "../hooks/usePersistedView";
 import { clearSensitiveToken } from "../utils/sensitiveDataAuth";
 import { DEPARTMENT_TITLES, getPanelLinkLabel } from "../utils/departmentLabels";
 import { isNativeApp } from "../mobile/native/platform";
+import { useDisplayPhotoSrc } from "../hooks/useDisplayPhotoSrc";
 import { isAdminDepartmentPath } from "./Admin/AdminLayout";
 
 const getPageInfo = (pathname, firstName) => {
@@ -415,7 +416,8 @@ export const Headers = ({ username, role, profilePic, hasManagerAccess, user }) 
     };
 
 const defaultAvatar = `https://ui-avatars.com/api/?name=${username}&background=2563eb&color=fff`;
-    const userAvatar = profilePic || defaultAvatar;
+    const loadedAvatar = useDisplayPhotoSrc(profilePic);
+    const userAvatar = loadedAvatar || defaultAvatar;
 
     const handleRevokeNotice = async () => {
         if (revokingNotice) return;
@@ -472,7 +474,7 @@ const defaultAvatar = `https://ui-avatars.com/api/?name=${username}&background=2
                     <button
                         type="button"
                         className="header-news-btn"
-                        onClick={() => navigate('/news-feed')}
+                        onClick={() => navigate('/news-feed', { state: { refreshAt: Date.now() } })}
                         aria-label={unreadNews > 0 ? `${unreadNews} new announcements` : 'News feed'}
                     >
                         <FaBell size={22} aria-hidden="true" />

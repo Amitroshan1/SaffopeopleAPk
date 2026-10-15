@@ -186,6 +186,11 @@
   overflow: hidden;
 }
 
+.leave-requests-card:has(.leave-filter-dropdown.is-open) {
+  overflow: visible;
+  z-index: 20;
+}
+
 .leave-requests-card::before {
   content: '';
   position: absolute;
@@ -285,8 +290,12 @@
   left: 0;
   right: 0;
   min-width: 100%;
-  max-height: 220px;
+  max-height: min(240px, 45vh);
+  overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   margin: 0;
   padding: 6px 0;
   list-style: none;

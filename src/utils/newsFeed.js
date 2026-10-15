@@ -6,7 +6,7 @@ const SEEN_KEY = 'newsFeedSeenIds';
 const READY_KEY = 'newsFeedSeenReady';
 const NEWS_FEED_VISIBLE_DAYS = 6;
 
-export const isNewsFeedPostVisible = (item) => {
+const isNewsFeedPostVisible = (item) => {
     const type = item?.type || 'post';
     if (type !== 'post') return true;
     const created = parseAppDate(item?.created_at);
@@ -29,8 +29,13 @@ const readSeenIds = () => {
 export async function fetchVisibleNewsFeed() {
     const token = localStorage.getItem('token');
     if (!token) return [];
-    const res = await fetch('/api/auth/news-feed', {
-        headers: { Authorization: `Bearer ${token}` },
+    const res = await fetch(`/api/auth/news-feed?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            Pragma: 'no-cache',
+        },
     });
     const data = await res.json();
     if (!data.success || !Array.isArray(data.news_feed)) return [];

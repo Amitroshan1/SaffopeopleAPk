@@ -13,23 +13,11 @@ import {
 export const API_BASE_URL = '/api/auth';
 
 import { DOCUMENT_FIELD_LABELS } from './profileUtils';
+import { normalizePhotoUrl } from '../../../utils/userPhoto';
+
+export { normalizePhotoUrl };
 
 export const DOCUMENT_LABELS = DOCUMENT_FIELD_LABELS;
-
-export function normalizePhotoUrl(url) {
-    if (!url) return url;
-    let path = url;
-    if (path.startsWith('/public/')) path = path.replace('/public/', '/');
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-        try {
-            const u = new URL(path);
-            path = u.pathname || path;
-        } catch {
-            /* keep */
-        }
-    }
-    return path;
-}
 
 export function mapGenderForBackend(gender) {
     if (!gender) return gender;
@@ -441,13 +429,75 @@ export async function postUploadPhoto(blob) {
     return { ok: res.ok, data };
 }
 
-/** Document preview URL (paths from upload-profile-file) */
+/** Turn a stored upload path into the same protected file route the website uses. */
+export function profileFileContentUrl(path) {
+    if (!path || typeof path !== 'string') return null;
+    const trimmed = path.trim();
+    if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
+    if (trimmed.includes('/api/files/signed/') && trimmed.includes('sig=')) {
+        const signed = trimmed.startsWith('/') || /^https?:\/\//i.test(trimmed) ? trimmed : `/${trimmed}`;
+        return normalizePhotoUrl(signed) || signed;
+    }
+    if (trimmed.includes('/api/accounts/file/') || trimmed.includes('/api/files/content/')) {
+        const direct = trimmed.startsWith('/') || /^https?:\/\//i.test(trimmed) ? trimmed : `/${trimmed}`;
+        return normalizePhotoUrl(direct) || direct;
+    }
+
+    let relative = trimmed.split('?')[0].replace(/\\/g, '/');
+    if (/^https?:\/\//i.test(relative)) {
+        try {
+            relative = new URL(relative).pathname || '';
+        } catch {
+            return null;
+        }
+    }
+    relative = relative.replace(/^\/+/, '');
+    if (relative.startsWith('static/uploads/')) relative = relative.slice('static/uploads/'.length);
+    else if (relative.startsWith('uploads/')) relative = relative.slice('uploads/'.length);
+    relative = relative.replace(/^\/+/, '');
+    if (!relative || relative.startsWith('api/')) return null;
+
+    const encoded = relative.split('/').map((part) => encodeURIComponent(part)).join('/');
+    return normalizePhotoUrl(`/api/files/content/${encoded}`) || `/api/files/content/${encoded}`;
+}
+
+/** Hide generated names such as 142_education_certificate_0.pdf. */
+export function friendlyUploadName(path, fallback = 'Certificate.pdf') {
+    if (!path || typeof path !== 'string') return fallback;
+    let leaf = path.split('?')[0].split('/').pop() || '';
+    try {
+        leaf = decodeURIComponent(leaf);
+    } catch {
+        /* keep raw leaf */
+    }
+    const extMatch = leaf.match(/\.(pdf|jpe?g|png)$/i);
+    const ext = extMatch ? extMatch[0].toLowerCase() : '.pdf';
+    if (/^\d+_education_certificate_\d+(\.[a-z0-9]+)?$/i.test(leaf) || /^\d+$/.test(leaf)) {
+        return `Certificate${ext}`;
+    }
+    return leaf || fallback;
+}
+
+/** Document preview URL (paths from upload-profile-file). Signed file links stay intact. */
 export function documentPreviewUrl(path) {
     if (!path || typeof path !== 'string') return null;
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-        return normalizePhotoUrl(path);
+    const trimmed = path.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
+    let asPath = trimmed;
+    if (!/^https?:\/\//i.test(asPath)) {
+        const noLead = asPath.replace(/^\/+/, '');
+        if (noLead.startsWith('api/files/') || noLead.startsWith('api/accounts/file/')) {
+            asPath = `/${noLead}`;
+        } else if (noLead.startsWith('static/')) {
+            asPath = `/${noLead}`;
+        } else if (noLead.startsWith('uploads/')) {
+            asPath = `/static/${noLead}`;
+        } else {
+            asPath = `/static/uploads/${noLead}`;
+        }
     }
-    const clean = path.startsWith('/') ? path.slice(1) : path;
-    if (clean.startsWith('static/')) return `/${clean}`;
-    return `/static/uploads/${clean}`;
+    return normalizePhotoUrl(asPath) || asPath;
 }

@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { friendlyUploadName, profileFileContentUrl } from '../../utils/profileApi';
 
 const IMAGE_EXT_PATTERN = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
 
@@ -8,56 +9,81 @@ function isImageFile(fileData) {
         if (fileData.type?.startsWith('image/')) return true;
         return IMAGE_EXT_PATTERN.test(fileData.name || '');
     }
-    return IMAGE_EXT_PATTERN.test(String(fileData));
+    return IMAGE_EXT_PATTERN.test(String(fileData).split('?')[0]);
 }
 
-function triggerFileDownload(url, filename) {
-    if (!url) return;
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename || '';
-    anchor.rel = 'noopener noreferrer';
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
+const ACCEPT_MIME = {
+    pdf: ['application/pdf'],
+    jpg: ['image/jpeg', 'image/jpg', 'image/pjpeg'],
+    jpeg: ['image/jpeg', 'image/jpg', 'image/pjpeg'],
+    png: ['image/png'],
+};
+
+async function fileMatchesAccept(file, accept) {
+    const allowedExts = accept.replace(/\./g, '').toLowerCase().split(',').map((part) => part.trim()).filter(Boolean);
+    const name = String(file.name || '');
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    if (ext && allowedExts.includes(ext)) return true;
+
+    const mime = String(file.type || '').toLowerCase();
+    if (allowedExts.some((item) => (ACCEPT_MIME[item] || []).includes(mime))) return true;
+
+    const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    const isPdf = head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
+    const isJpeg = head[0] === 0xff && head[1] === 0xd8;
+    const isPng = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+    if (isPdf && allowedExts.includes('pdf')) return true;
+    if (isJpeg && (allowedExts.includes('jpg') || allowedExts.includes('jpeg'))) return true;
+    if (isPng && allowedExts.includes('png')) return true;
+    return false;
 }
 
 export const FileUpload = ({ label, name, onFileChange, fileData, error, adminId, uploadProfileFileUrl, accept }) => {
     const [progress, setProgress] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [pickedName, setPickedName] = useState('');
+    const [previewObjectUrl, setPreviewObjectUrl] = useState('');
     const inputRef = useRef(null);
-
-    const getFilePreview = (file) => {
-        if (!file || !file.name) return '📂';
-        if (file.type && file.type.startsWith('image/')) return '🖼️';
-        if (file.name.endsWith('.pdf')) return '📄';
-        if (file.name.endsWith('.doc') || file.name.endsWith('.docx')) return '📰';
-        return '📎';
-    };
+    const localPreviewRef = useRef(false);
 
     const getDisplayName = () => {
         if (!fileData) return null;
-        if (typeof fileData === 'string') {
-            const parts = fileData.split('/');
-            return parts[parts.length - 1] || 'Document Uploaded';
-        }
-        return fileData.name || 'Document Uploaded';
+        if (pickedName) return pickedName;
+        if (typeof fileData === 'string') return friendlyUploadName(fileData, 'Certificate.pdf');
+        return fileData.name || 'Certificate';
     };
 
     const handleActualFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (accept) {
-            const allowedExts = accept.replace(/\./g, '').toLowerCase().split(',');
+        setPickedName(file.name || 'Certificate.pdf');
+        const pickedIsImage = file.type?.startsWith('image/') || IMAGE_EXT_PATTERN.test(file.name || '');
+        localPreviewRef.current = pickedIsImage;
+        if (pickedIsImage) {
+            setPreviewObjectUrl((current) => {
+                if (current) URL.revokeObjectURL(current);
+                return URL.createObjectURL(file);
+            });
+        } else {
+            setPreviewObjectUrl((current) => {
+                if (current) URL.revokeObjectURL(current);
+                return '';
+            });
+        }
+
+        if (accept && !(await fileMatchesAccept(file, accept))) {
             const ext = (file.name.split('.').pop() || '').toLowerCase();
-            if (!allowedExts.includes(ext)) {
-                setUploadError(`Unsupported file format (.${ext}). Please use .pdf, .jpg, .jpeg, or .png only.`);
-                if (inputRef.current) inputRef.current.value = '';
-                return;
-            }
+            localPreviewRef.current = false;
+            setPickedName('');
+            setPreviewObjectUrl((current) => {
+                if (current) URL.revokeObjectURL(current);
+                return '';
+            });
+            setUploadError(`Unsupported file format (.${ext || 'unknown'}). Please use .pdf, .jpg, .jpeg, or .png only.`);
+            if (inputRef.current) inputRef.current.value = '';
+            return;
         }
 
         if (!adminId || !uploadProfileFileUrl) {
@@ -84,12 +110,13 @@ export const FileUpload = ({ label, name, onFileChange, fileData, error, adminId
             });
             const data = await res.json().catch(() => ({}));
 
-            if (!res.ok) {
+            const savedPath = data.path || data.file_path || data.url || data.doc_file || data.file || null;
+            if (!res.ok || data.success === false || !savedPath) {
                 setUploadError(data.message || 'Upload failed');
                 return;
             }
             setProgress(100);
-            onFileChange(name, data.path || null);
+            onFileChange(name, savedPath);
         } catch (err) {
             setUploadError('Network error. Please try again.');
         } finally {
@@ -104,56 +131,69 @@ export const FileUpload = ({ label, name, onFileChange, fileData, error, adminId
             URL.revokeObjectURL(fileData.url);
         }
         onFileChange(name, null);
+        setPickedName('');
+        localPreviewRef.current = false;
+        setPreviewObjectUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return '';
+        });
         setIsUploading(false);
         setProgress(0);
         setUploadError('');
-        setIsPreviewOpen(false);
         if (inputRef.current) inputRef.current.value = '';
     };
 
-    const previewUrl = typeof fileData === 'string' ? `/static/uploads/${fileData}` : (fileData?.url || null);
-    const isImage = isImageFile(fileData);
+    const isImage = isImageFile(pickedName || fileData) || Boolean(previewObjectUrl);
 
-    const handleOpenFile = (e) => {
-        e?.stopPropagation?.();
-        if (!previewUrl) return;
-        if (isImage) {
-            setIsPreviewOpen(true);
-            return;
-        }
-        triggerFileDownload(previewUrl, getDisplayName() || 'download');
-    };
+    useEffect(() => {
+        if (!fileData || typeof fileData !== 'string' || localPreviewRef.current) return undefined;
+        if (/\.pdf($|\?)/i.test(fileData)) return undefined;
+        const url = profileFileContentUrl(fileData);
+        if (!url) return undefined;
+        let cancelled = false;
+        (async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch(url, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (!res.ok) return;
+                const blob = await res.blob();
+                if (cancelled || !String(blob.type || '').startsWith('image/')) return;
+                setPreviewObjectUrl((current) => {
+                    if (current) URL.revokeObjectURL(current);
+                    return URL.createObjectURL(blob);
+                });
+            } catch {
+                /* thumbnail stays empty until the file can be opened */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [fileData]);
 
     return (
         <div className="input-box file-upload-box">
-            <label htmlFor={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {label}
-                {fileData && (
-                    <span
-                        onClick={handleRemoveFile}
-                        style={{ color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                        title="Remove Document"
-                    >
-                        ❌ Remove
-                    </span>
-                )}
-            </label>
+            <label htmlFor={name}>{label}</label>
             <input
                 type="file"
                 id={name}
                 name={name}
                 ref={inputRef}
+                className="file-upload-native"
                 accept={accept}
                 onChange={handleActualFileChange}
-                style={{
-                    border: error ? '1px solid red' : '1px solid #ddd',
-                    padding: '8px',
-                    borderRadius: '6px',
-                    width: '100%',
-                    boxSizing: 'border-box'
-                }}
                 disabled={isUploading}
             />
+            <button
+                type="button"
+                className="file-upload-choose"
+                onClick={() => inputRef.current?.click()}
+                disabled={isUploading}
+            >
+                {fileData ? 'Change file' : 'Choose PDF or image'}
+            </button>
 
             {isUploading && (
                 <div style={{ marginTop: '8px' }}>
@@ -171,112 +211,34 @@ export const FileUpload = ({ label, name, onFileChange, fileData, error, adminId
                 </div>
             )}
 
-            {fileData && !isUploading && (
-                <>
-                    <div
-                        className="file-upload-preview-row"
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            marginTop: '8px',
-                            gap: '10px',
-                            padding: '6px 8px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            background: '#f9fafb',
-                            cursor: previewUrl ? 'pointer' : 'default'
-                        }}
-                        onClick={previewUrl ? handleOpenFile : undefined}
-                        title={previewUrl ? (isImage ? 'Click to preview' : 'Click to download') : undefined}
-                    >
-                        <span style={{ fontSize: '24px', flexShrink: 0 }}>
-                            {previewUrl && isImage ? (
-                                <img
-                                    src={previewUrl}
-                                    alt="Preview"
-                                    style={{
-                                        width: '40px',
-                                        height: '40px',
-                                        objectFit: 'cover',
-                                        borderRadius: '4px'
-                                    }}
-                                />
-                            ) : (
-                                getFilePreview(typeof fileData === 'object' ? fileData : { name: getDisplayName() })
-                            )}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <p
-                                style={{
-                                    fontSize: '14px',
-                                    color: '#111827',
-                                    margin: 0,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    fontWeight: 600
-                                }}
-                            >
-                                {getDisplayName()}
-                            </p>
-                            {typeof fileData === 'object' && fileData?.size !== undefined && (
-                                <p style={{ fontSize: '11px', color: '#6b7280', margin: '2px 0 0' }}>
-                                    {(fileData.size / (1024 * 1024)).toFixed(2)} MB
-                                </p>
-                            )}
-                            {typeof fileData === 'string' && (
-                                <button
-                                    type="button"
-                                    onClick={handleOpenFile}
-                                    style={{
-                                        fontSize: '12px',
-                                        color: '#3b82f6',
-                                        marginTop: '2px',
-                                        display: 'inline-block',
-                                        border: 'none',
-                                        background: 'none',
-                                        padding: 0,
-                                        cursor: 'pointer',
-                                        textDecoration: 'underline',
-                                    }}
-                                >
-                                    {isImage ? 'View' : 'Download'}
-                                </button>
-                            )}
-                        </div>
+            {fileData && !isUploading && isImage && previewObjectUrl && (
+                <div className="file-upload-thumb">
+                    <div className="file-upload-thumb-photo">
+                        <img src={previewObjectUrl} alt={getDisplayName() || 'Certificate'} />
                     </div>
+                    <button
+                        type="button"
+                        className="file-upload-thumb-remove"
+                        onClick={handleRemoveFile}
+                        aria-label="Remove"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
 
-                    {isPreviewOpen && previewUrl && isImage && (
-                        <div
-                            className="file-preview-backdrop"
-                            onClick={() => setIsPreviewOpen(false)}
-                        >
-                            <div
-                                className="file-preview-modal"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <div className="file-preview-modal__header">
-                                    <span className="file-preview-modal__title">
-                                        {getDisplayName()}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        className="file-preview-modal__close"
-                                        onClick={() => setIsPreviewOpen(false)}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-
-                                <img
-                                    src={previewUrl}
-                                    alt={getDisplayName()}
-                                    className="file-preview-modal__image"
-                                />
-                            </div>
-                        </div>
-                    )}
-                </>
+            {fileData && !isUploading && !isImage && (
+                <div className="file-upload-preview-row">
+                    <p className="file-upload-preview-name">{getDisplayName()}</p>
+                    <button
+                        type="button"
+                        className="file-upload-row-remove"
+                        onClick={handleRemoveFile}
+                        aria-label="Remove"
+                    >
+                        ×
+                    </button>
+                </div>
             )}
 
             {(uploadError || error) && <p className="error-text">{uploadError || error}</p>}

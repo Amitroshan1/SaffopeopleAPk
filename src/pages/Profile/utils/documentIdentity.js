@@ -136,7 +136,6 @@ export const DOCUMENT_ERROR_KEYS = [
   'aadhaarNumber', 'aadharFront', 'aadharBack',
   'panNumber', 'panFront', 'panBack',
   'bankAccountNumber', 'bankName', 'bankBranchCode', 'ifscCode', 'passbookFront',
-  'appointmentLetter',
 ];
 
 export function hasUploadedFile(file) {
@@ -177,11 +176,7 @@ export function validateDocumentSection(files, documentMeta) {
       errors.ifscCode = 'Enter a valid 11-character IFSC code (e.g. SBIN0001234).';
     }
   } else if (!hasUploadedFile(f.passbookFront)) {
-    errors.passbookFront = 'Passbook or cheque front image is required.';
-  }
-
-  if (!hasUploadedFile(f.appointmentLetter)) {
-    errors.appointmentLetter = 'Appointment letter is required.';
+    errors.passbookFront = 'Bank Passbook/cheque is required.';
   }
 
   return errors;

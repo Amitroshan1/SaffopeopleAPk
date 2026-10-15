@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import AvatarEditor from 'react-avatar-editor';
+import { useDisplayPhotoSrc } from '../../../../hooks/useDisplayPhotoSrc';
 
 const FALLBACK_AVATAR =
     'data:image/svg+xml,' +
@@ -13,15 +14,19 @@ const FALLBACK_AVATAR =
 export const ProfileAvatar = ({ imageUrl, onImageChange }) => {
     // Use imageUrl as the initial state for the image source
     const [image, setImage] = useState(imageUrl || '');
-    const [displaySrc, setDisplaySrc] = useState(imageUrl || FALLBACK_AVATAR);
     const [isEditing, setIsEditing] = useState(false);
     const editorRef = useRef(null);
+    const photoSrc = useDisplayPhotoSrc(isEditing ? '' : imageUrl);
+    const [photoBroken, setPhotoBroken] = useState(false);
+
+    useEffect(() => {
+        setPhotoBroken(false);
+    }, [photoSrc]);
 
     // Sync internal state when imageUrl prop changes (e.g. after successful upload)
     useEffect(() => {
         if (imageUrl && !isEditing) {
             setImage(imageUrl);
-            setDisplaySrc(imageUrl);
         }
     }, [imageUrl, isEditing]);
 
@@ -98,10 +103,10 @@ export const ProfileAvatar = ({ imageUrl, onImageChange }) => {
                     style={{ cursor: 'pointer' }} 
                 >
                     <img
-                        src={displaySrc || FALLBACK_AVATAR}
+                        src={photoSrc && !photoBroken ? photoSrc : FALLBACK_AVATAR}
                         alt=""
                         className="avatar"
-                        onError={() => setDisplaySrc(FALLBACK_AVATAR)}
+                        onError={() => setPhotoBroken(true)}
                     />
                     <div className="avatar-overlay">Change</div>
                     <input

@@ -83,6 +83,15 @@ export const UserProvider = ({ children }) => {
     setPhotoVersion((v) => v + 1);
   }, []);
 
+  const setUserPhoto = useCallback((photoUrl) => {
+    if (!photoUrl) return;
+    setUserData((prev) => ({
+      ...prev,
+      user: { ...prev.user, photo_url: photoUrl },
+      employee: { ...prev.employee, photo_url: photoUrl },
+    }));
+  }, []);
+
   useEffect(() => {
     fetchCoreUserData({ force: false });
   }, [fetchCoreUserData]);
@@ -102,6 +111,7 @@ export const UserProvider = ({ children }) => {
     applyHomepageResult,
     photoVersion,
     bumpPhotoVersion,
+    setUserPhoto,
   };
 
   return (

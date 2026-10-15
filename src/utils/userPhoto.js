@@ -1,20 +1,38 @@
+import { getApiOrigin } from '../mobile/mobileApiShim';
+
 /**
  * Normalize profile photo paths from API (relative /static/uploads/...).
+ * On the phone, image tags are not rewritten by the API shim, so a relative
+ * path must point at the server or the WebView loads it from localhost.
  */
 export function normalizePhotoUrl(url) {
   if (!url || typeof url !== 'string') return '';
   let path = url.trim();
   if (!path) return '';
+  if (path.startsWith('data:') || path.startsWith('blob:')) return path;
   if (path.startsWith('/public/')) path = path.replace('/public/', '/');
   if (path.startsWith('http://') || path.startsWith('https://')) {
     try {
       const u = new URL(path);
-      path = u.pathname || path;
+      path = `${u.pathname || ''}${u.search || ''}` || path;
     } catch {
       /* keep */
     }
   }
+  if (path.startsWith('/')) {
+    const origin = getApiOrigin();
+    if (origin) return `${origin}${path}`;
+  }
   return path;
+}
+
+/** Add a cache-buster without breaking signed file links that already contain ?sig= */
+export function cacheBustPhotoUrl(url, token = Date.now()) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+  const joiner = trimmed.includes('?') ? '&' : '?';
+  return `${trimmed}${joiner}v=${encodeURIComponent(String(token))}`;
 }
 
 /** First non-empty photo field on a user/employee object. */

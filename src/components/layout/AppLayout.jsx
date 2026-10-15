@@ -17,17 +17,12 @@ import { AppFooter } from "./AppFooter";
 import { BottomNav } from "./BottomNav";
 import { useFloatingNotifications } from "../../hooks/useFloatingNotifications";
 import { isNativeApp } from "../../mobile/native/platform";
+import { cacheBustPhotoUrl, normalizePhotoUrl } from "../../utils/userPhoto";
 import { dispatchAppSoftRefresh } from "../../utils/homepageApi";
 import { shouldRefreshUserOnNavigate } from "../../utils/appRefreshPolicy";
 // import "../../pages/style/Dashboard.css"
 import "../../pages/Dashboard/Dashboard.css"
 import "./AppLayoutPullRefresh.css";
-
-// Normalize photo URL: strip /public prefix if present (Vite serves public files at root)
-const normalizePhotoUrl = (url) => {
-    if (!url) return url;
-    return url.startsWith('/public/') ? url.replace('/public/', '/') : url;
-};
 
 export const AppLayout = () => {
     const navigate = useNavigate();
@@ -228,9 +223,15 @@ export const AppLayout = () => {
     
     // Cache-bust profile picture URL when photo_url or photoVersion changes (photoVersion bumps on profile upload)
     const profilePicWithCache = useMemo(() => {
-        const url = normalizePhotoUrl(userData.user?.photo_url);
-        return url ? `${url}?v=${photoVersion}&t=${Date.now()}` : null;
-    }, [userData.user?.photo_url, photoVersion]);
+        const rawPhoto =
+            userData.employee?.photo_url
+            || userData.user?.photo_url
+            || userData.employee?.photo
+            || userData.user?.photo
+            || '';
+        const url = normalizePhotoUrl(rawPhoto);
+        return url ? cacheBustPhotoUrl(url, photoVersion) : null;
+    }, [userData.employee?.photo_url, userData.employee?.photo, userData.user?.photo_url, userData.user?.photo, photoVersion]);
 
     /** Merge employee profile fields used by Headers for panel routing (emp_type alone may be "Super Admin"). */
     const headerUser = useMemo(

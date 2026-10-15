@@ -92,7 +92,7 @@ export const DocumentUploadSection = ({
     return (
         <AccordionCard
             title="Accounts Document Upload"
-            subText="Enter identity numbers first, then upload matching documents. Appointment letter upload only."
+            subText="Enter identity numbers first, then upload matching documents."
             sectionName="documents"
             isExpanded={isExpanded}
             onToggle={onToggle}
@@ -284,7 +284,7 @@ export const DocumentUploadSection = ({
                         <div className="doc-identity-uploads">
                             {isEditMode ? (
                                 <FileUpload
-                                    label="Bank Passbook / Cheque (Front)"
+                                    label="Bank Passbook/cheque"
                                     name="passbookFront"
                                     fileData={files.passbookFront}
                                     onFileChange={onFileChange}
@@ -294,7 +294,7 @@ export const DocumentUploadSection = ({
                                     accept={ID_ACCEPT}
                                 />
                             ) : (
-                                renderViewFile('passbookFront', 'Passbook / Cheque (Front)')
+                                renderViewFile('passbookFront', 'Bank Passbook/cheque')
                             )}
                         </div>
                     )}
@@ -303,7 +303,7 @@ export const DocumentUploadSection = ({
                     )}
                 </section>
 
-                {/* ── Appointment letter ── */}
+                {/* ── Appointment Letter ── */}
                 <section className="doc-identity-group">
                     <h4 className="doc-identity-group__title">Appointment Letter</h4>
                     <div className="doc-identity-uploads">
