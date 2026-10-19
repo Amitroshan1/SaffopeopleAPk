@@ -137,6 +137,17 @@
   min-height: 80px;
 }
 
+.performance-field input.performance-month-fixed {
+  background: #f3f4f6;
+  color: #4b5563;
+  cursor: default;
+}
+
+.performance-field input.performance-month-fixed:focus {
+  border-color: var(--perf-border);
+  box-shadow: none;
+}
+
 .performance-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -434,5 +445,60 @@
   }
   .performance-table {
     min-width: 380px;
+  }
+}
+
+/* Phones: one stacked card per submission instead of a sideways-scrolling table. */
+@media (max-width: 768px) {
+  .performance-table-wrap {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+  }
+  .performance-table {
+    min-width: 0;
+  }
+  .performance-table thead {
+    display: none;
+  }
+  .performance-table,
+  .performance-table tbody,
+  .performance-table tr,
+  .performance-table td {
+    display: block;
+    width: 100%;
+  }
+  .performance-table tbody tr {
+    border: 1px solid var(--perf-border);
+    border-radius: 10px;
+    padding: 4px 12px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .performance-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+  .performance-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    font-size: 0.85rem;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .performance-table td:last-child {
+    border-bottom: none;
+  }
+  .performance-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #4338ca;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
   }
 }

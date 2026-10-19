@@ -537,7 +537,7 @@ const CustomDropdown = ({ options, currentValue, onChange, label, disabled = fal
     );
 };
 
-export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [], asPage = false, summary = null }) => {
+export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [], asPage = false, summary = null, leaveBalance = null }) => {
     const [leaveType, setLeaveType] = useState('');
     const [casualLeaveDuration, setCasualLeaveDuration] = useState('Full Day'); 
     const [optionalHoliday, setOptionalHoliday] = useState('');
@@ -548,6 +548,8 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
     const [toDate, setToDate] = useState('');
     const [reason, setReason] = useState('');
     const [compOffHint, setCompOffHint] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const submittingRef = useRef(false);
 
     // --- Limit Logic ---
     const currentMonth = dayjs().format('YYYY-MM');
@@ -620,6 +622,9 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
         setToDate(holiday.holiday_date);
         setReason(buildOptionalLeaveReason(holiday));
     };
+
+    const plBalance = Number(leaveBalance?.pl ?? 0);
+    const showPlUnpaidHint = leaveType === 'Privilege Leave' && !(plBalance > 0);
 
     const isHalfDay =
         leaveType === 'Casual Leave' && casualLeaveDuration === 'Half Day';
@@ -786,6 +791,7 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (submittingRef.current) return;
         
         // Prevent submission if logic is bypassed
         if (leaveType.includes('Used') || leaveType.includes('Limit')) {
@@ -842,15 +848,23 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
         }
 
         const finalReason = leaveType === 'Optional Leave' ? reason.trim() : reason;
-        
-        // Call parent onSubmit (which will handle API call)
-        const success = await onSubmit({ 
-            leaveType, 
-            fromDate, 
-            toDate, 
-            reason: finalReason, 
-            calculatedDays: finalDays 
-        });
+
+        submittingRef.current = true;
+        setIsSubmitting(true);
+        let success = false;
+        try {
+            // Call parent onSubmit (which will handle API call)
+            success = await onSubmit({ 
+                leaveType, 
+                fromDate, 
+                toDate, 
+                reason: finalReason, 
+                calculatedDays: finalDays 
+            });
+        } finally {
+            submittingRef.current = false;
+            setIsSubmitting(false);
+        }
         
         // Only reset and close if submission was successful
         if (success) {
@@ -885,6 +899,11 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
                         />
                         {leaveType === 'Compensatory Leave' && compOffHint ? (
                             <p className="optional-holiday-hint">{compOffHint}</p>
+                        ) : null}
+                        {showPlUnpaidHint ? (
+                            <p className="optional-holiday-hint">
+                                Your PL balance is 0. These days will be counted as unpaid.
+                            </p>
                         ) : null}
                     </div>
 
@@ -990,8 +1009,10 @@ export const ApplyLeaveModal = ({ isOpen, onClose, onSubmit, initialRequests = [
                 </form>
 
                 <div className="modal-footer">
-                    <button type="button" className="button button-cancel" onClick={onClose}>Cancel</button>
-                    <button type="submit" form="apply-leave-form" className="button button-submit">Submit Request</button>
+                    <button type="button" className="button button-cancel" onClick={onClose} disabled={isSubmitting}>Cancel</button>
+                    <button type="submit" form="apply-leave-form" className="button button-submit" disabled={isSubmitting}>
+                        {isSubmitting ? 'Submitting…' : 'Submit Request'}
+                    </button>
                 </div>
             </div>
     );

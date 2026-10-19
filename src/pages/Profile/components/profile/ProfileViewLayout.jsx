@@ -3,7 +3,9 @@ import { GRADIENT_HEADER_STYLE } from '../../utils/gradientStyles';
 import { Info } from '../common/Info';
 import { ProfileSummaryCard } from './ProfileSummaryCard';
 import { formatDateForDisplay, shouldShowReportingManager } from '../../utils/profileUtils';
-import { DOCUMENT_LABELS, documentPreviewUrl } from '../../utils/profileApi';
+import { DOCUMENT_LABELS } from '../../utils/profileApi';
+import { DOCUMENT_DOWNLOAD_NAMES } from '../../utils/profileDocuments';
+import { DocumentImageViewer, useProfileDocumentOpener } from './ProfileDocumentViewer';
 import {
     maskAadhaar,
     maskPan,
@@ -62,6 +64,8 @@ export const ProfileViewLayout = ({
         documentMeta,
         probation,
     } = data;
+
+    const { viewer, closeViewer, openDocument, busyKey } = useProfileDocumentOpener();
 
     const personalItems = [
         { label: 'Full name', value: formData.fullName, key: 'fullName' },
@@ -163,7 +167,7 @@ export const ProfileViewLayout = ({
                                 <p className="profile-empty-hint">No education records yet.</p>
                             ) : (
                                 <div className="profile-record-list">
-                                    {filledEducation.map((row) => (
+                                    {filledEducation.map((row, eduIndex) => (
                                         <div key={row.id} className="profile-record">
                                             <div className="profile-compact-grid">
                                                 <Info label="Qualification" value={row.qualification} />
@@ -176,15 +180,19 @@ export const ProfileViewLayout = ({
                                                 <Info label="Marks" value={row.marks} />
                                                 <div className="info-box">
                                                     <p className="label">Certificate</p>
-                                                    {row.certificate ? (
-                                                        <a
-                                                            href={documentPreviewUrl(row.certificate)}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="profile-doc-link"
+                                                    {typeof row.certificate === 'string' && row.certificate ? (
+                                                        <button
+                                                            type="button"
+                                                            className="profile-doc-link profile-doc-link--button"
+                                                            disabled={Boolean(busyKey)}
+                                                            onClick={() => openDocument(
+                                                                `edu-${row.id ?? eduIndex}`,
+                                                                row.certificate,
+                                                                `Education_Certificate_${eduIndex + 1}`
+                                                            )}
                                                         >
-                                                            View
-                                                        </a>
+                                                            {busyKey === `edu-${row.id ?? eduIndex}` ? 'Opening…' : 'View'}
+                                                        </button>
                                                     ) : (
                                                         <p className="value">—</p>
                                                     )}
@@ -290,19 +298,19 @@ export const ProfileViewLayout = ({
                         <ul className="profile-doc-list profile-compact-grid">
                             {Object.entries(DOCUMENT_LABELS).map(([key, label]) => {
                                 const path = files?.[key];
-                                const url = documentPreviewUrl(path);
+                                const hasFile = typeof path === 'string' && path.trim() !== '';
                                 return (
                                     <li key={key} className="profile-doc-list-item">
                                         <span className="profile-doc-list-label">{label}</span>
-                                        {url ? (
-                                            <a
-                                                href={url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="profile-doc-link"
+                                        {hasFile ? (
+                                            <button
+                                                type="button"
+                                                className="profile-doc-link profile-doc-link--button"
+                                                disabled={Boolean(busyKey)}
+                                                onClick={() => openDocument(key, path, DOCUMENT_DOWNLOAD_NAMES[key] || key)}
                                             >
-                                                Uploaded — open
-                                            </a>
+                                                {busyKey === key ? 'Opening…' : 'Uploaded — open'}
+                                            </button>
                                         ) : (
                                             <span className="profile-doc-missing">Not uploaded</span>
                                         )}
@@ -313,6 +321,7 @@ export const ProfileViewLayout = ({
                     </ViewSection>
                 </div>
             </div>
+            <DocumentImageViewer viewer={viewer} onClose={closeViewer} />
         </div>
     );
 };

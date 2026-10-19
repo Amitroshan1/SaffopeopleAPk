@@ -6,7 +6,6 @@ import { tryConsumeNativeBack } from "./nativeBackNavigation.js";
 import {
   canGoBackInStack,
   goBackInStack,
-  getNavigationStackSize,
   recordNavigation,
   resetNavigationStack,
 } from "./nativeNavigationStack.js";
@@ -19,6 +18,8 @@ function isAppRootPath(path) {
   const p = normalizePath(path);
   return p === "/" || p === "/dashboard";
 }
+
+const EXIT_CONFIRM_WINDOW_MS = 2000;
 
 function routerHistoryIndex() {
   const idx = window.history.state?.idx;
@@ -40,6 +41,7 @@ export function NativeBackHandler() {
   navigateRef.current = navigate;
 
   const initializedRef = useRef(false);
+  const lastRootBackAtRef = useRef(0);
 
   useEffect(() => {
     if (!isNativeApp()) return;
@@ -67,6 +69,16 @@ export function NativeBackHandler() {
         return;
       }
 
+      if (isAppRootPath(window.location.pathname)) {
+        const now = Date.now();
+        if (now - lastRootBackAtRef.current < EXIT_CONFIRM_WINDOW_MS) {
+          App.exitApp();
+          return;
+        }
+        lastRootBackAtRef.current = now;
+        return;
+      }
+
       /* React Router history fallback */
       if (routerHistoryIndex() > 0) {
         navigateRef.current(-1);
@@ -76,14 +88,6 @@ export function NativeBackHandler() {
       /* Custom route stack fallback when history idx is unreliable. */
       if (canGoBackInStack()) {
         goBackInStack((target) => navigateToStackPath(navigateRef.current, target));
-        return;
-      }
-
-      const path = normalizePath(window.location.pathname);
-      const stackSize = getNavigationStackSize();
-
-      if (isAppRootPath(path) && stackSize <= 1) {
-        App.exitApp();
         return;
       }
 

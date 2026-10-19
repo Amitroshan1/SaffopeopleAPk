@@ -108,6 +108,7 @@ export function ApplyLeavePage() {
             onClose={() => navigate('/leaves')}
             onSubmit={handleLeaveSubmit}
             initialRequests={requests}
+            leaveBalance={balance}
             summary={(
                 <>
                     <button

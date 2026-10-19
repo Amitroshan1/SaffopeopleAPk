@@ -28,6 +28,7 @@ export const EducationSection = ({
     adminId,
     uploadProfileFileUrl,
     errors = {},
+    isSaving = false,
 }) => {
     const isEditMode = mode === 'edit';
 
@@ -164,6 +165,7 @@ export const EducationSection = ({
                         type="button"
                         onClick={onUndo}
                         className="entry-undo-btn"
+                        disabled={isSaving}
                     >
                         Undo
                     </button>
@@ -171,8 +173,9 @@ export const EducationSection = ({
                         type="button"
                         onClick={onSave}
                         className="entry-save-btn"
+                        disabled={isSaving}
                     >
-                        Save
+                        {isSaving ? 'Saving…' : 'Save'}
                     </button>
                 </div>
             )}

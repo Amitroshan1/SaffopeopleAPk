@@ -23,7 +23,8 @@ export const EmploymentBankSection = ({
     onRemovePrevEmp,
     onSave,        // ✅ NEW
     onUndo,        // ✅ NEW
-    errors 
+    errors,
+    isSaving = false
 }) => {
     const isEditMode = mode === 'edit';
     const showReportingManager = shouldShowReportingManager(data);
@@ -135,6 +136,7 @@ export const EmploymentBankSection = ({
                         type="button"
                         onClick={onUndo}
                         className="entry-undo-btn"
+                        disabled={isSaving}
                     >
                         Undo
                     </button>
@@ -142,8 +144,9 @@ export const EmploymentBankSection = ({
                         type="button"
                         onClick={onSave}
                         className="entry-save-btn"
+                        disabled={isSaving}
                     >
-                        Save
+                        {isSaving ? 'Saving…' : 'Save'}
                     </button>
                 </div>
             )}

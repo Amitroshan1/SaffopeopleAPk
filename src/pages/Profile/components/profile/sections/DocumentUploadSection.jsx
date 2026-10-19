@@ -58,6 +58,7 @@ export const DocumentUploadSection = ({
     errors,
     adminId,
     uploadProfileFileUrl,
+    isSaving = false,
 }) => {
     const isEditMode = mode === 'edit';
     const meta = documentMeta || {};
@@ -326,11 +327,11 @@ export const DocumentUploadSection = ({
 
                 {isEditMode ? (
                     <div className="section-actions section-actions--compact">
-                        <button type="button" onClick={onUndo} className="entry-undo-btn">
+                        <button type="button" onClick={onUndo} className="entry-undo-btn" disabled={isSaving}>
                             Undo
                         </button>
-                        <button type="button" onClick={onSave} className="entry-save-btn">
-                            Save
+                        <button type="button" onClick={onSave} className="entry-save-btn" disabled={isSaving}>
+                            {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     </div>
                 ) : (

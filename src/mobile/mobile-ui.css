@@ -24,25 +24,32 @@ html.capacitor-native .app-layout {
 }
 
 html.capacitor-native .header-container {
-  top: var(--safe-top, 0px);
+  top: 0;
   z-index: 1100;
   box-sizing: border-box;
-  height: var(--header-height, 72px);
-  min-height: var(--header-height, 72px);
-  max-height: var(--header-height, 72px);
-  padding: 0 10px 0 8px;
+  height: calc(var(--header-height, 72px) + var(--safe-top, 0px));
+  min-height: calc(var(--header-height, 72px) + var(--safe-top, 0px));
+  max-height: calc(var(--header-height, 72px) + var(--safe-top, 0px));
+  padding: var(--safe-top, 0px) 10px 0 8px;
   display: flex;
   align-items: center;
   background: #ffffff;
 }
 
+/* Android 16 draws the status bar over the WebView; keep that strip black like other phones. */
+html.capacitor-native .header-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-top, 0px);
+  background: #000000;
+}
+
 html.capacitor-native .home-scroll-area {
   top: 0;
   padding-top: 0;
-}
-
-html.capacitor-native .app-layout > .content-area {
-  top: calc(var(--safe-top, 0px) + var(--header-height, 72px));
 }
 
 html.capacitor-native .content-area {
@@ -157,6 +164,6 @@ html.capacitor-native .app-layout > .content-area {
   overflow: visible !important;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
-  padding-top: calc(var(--safe-top, 0px) + var(--header-height, 72px) + 8px) !important;
+  padding-top: calc(var(--safe-top, 0px) + var(--header-height, 72px)) !important;
   padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
 }

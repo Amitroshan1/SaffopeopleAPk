@@ -108,7 +108,7 @@ export function Downloads() {
         <div className="downloads-empty">
           <FaFileAlt aria-hidden />
           <p>No downloads yet</p>
-          <span>Payslips and attendance Excel will show here after you download them.</span>
+          <span>Payslips, attendance Excel and profile documents will show here after you download them.</span>
         </div>
       ) : (
         <ul className="downloads-list">

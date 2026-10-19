@@ -20,19 +20,22 @@ export const PersonalInfoSection = ({
     onChange,
     onSave,
     onUndo,
-    errors
+    errors,
+    isSaving = false
 }) => {
     const isEditMode = mode === 'edit';
 
     const mandatoryKeys = [
         'fullName',
         'fatherName',
+        'motherName',
         'maritalStatus',
         'personalEmail',
         'mobile',
         'nationality',
         'dateOfBirth',
-        'gender'
+        'gender',
+        'bloodGroup'
     ];
 
     const hasMandatoryErrors =
@@ -78,6 +81,8 @@ export const PersonalInfoSection = ({
                             value={data.motherName}
                             onChange={onChange}
                             error={errors.motherName}
+                            isMandatory
+                            minLength={2}
                             maxLength={100}
                         />
 
@@ -118,6 +123,8 @@ export const PersonalInfoSection = ({
                             value={data.bloodGroup}
                             onChange={onChange}
                             options={bloodGroupOptions}
+                            error={errors.bloodGroup}
+                            isMandatory
                         />
 
                         <SelectInput
@@ -183,6 +190,7 @@ export const PersonalInfoSection = ({
                             type="button"
                             onClick={onUndo}
                             className="entry-undo-btn"
+                            disabled={isSaving}
                         >
                             Undo
                         </button>
@@ -191,8 +199,9 @@ export const PersonalInfoSection = ({
                             type="button"
                             onClick={onSave}
                             className="entry-save-btn"
+                            disabled={isSaving}
                         >
-                            Save
+                            {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     </div>
                 )}

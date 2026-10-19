@@ -1255,7 +1255,7 @@ export const Dashboard = () => {
                                 <div className="profile-sheet__fact">
                                     <FiUserCheck size={16} />
                                     <div>
-                                        <span>Manager</span>
+                                        <span>Reporting Manager</span>
                                         <strong>{managerName}</strong>
                                     </div>
                                 </div>

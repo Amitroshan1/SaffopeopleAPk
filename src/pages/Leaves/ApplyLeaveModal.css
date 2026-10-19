@@ -383,6 +383,12 @@
     filter: brightness(1.05);
 }
 
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    filter: none;
+}
+
 /* --- RESPONSIVENESS --- */
 
 /* Tablet (768px to 1024px) */

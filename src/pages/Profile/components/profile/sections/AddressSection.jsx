@@ -85,6 +85,7 @@ export const AddressBlock = ({
                             onChange={(e) => onChange(addressType, e)}
                             readOnly={readOnly}
                             error={errors[`${errorPrefix}City`]}
+                            isMandatory
                             maxLength={100}
                         />
                         <Input
@@ -94,6 +95,7 @@ export const AddressBlock = ({
                             onChange={(e) => onChange(addressType, e)}
                             readOnly={readOnly}
                             error={errors[`${errorPrefix}District`]}
+                            isMandatory
                             maxLength={100}
                         />
                         <Input
@@ -103,6 +105,7 @@ export const AddressBlock = ({
                             onChange={(e) => onChange(addressType, e)}
                             readOnly={readOnly}
                             error={errors[`${errorPrefix}State`]}
+                            isMandatory
                             maxLength={100}
                         />
                     </div>
@@ -139,6 +142,7 @@ export const AddressSection = ({
     onSave,
     onUndo,
     errors,
+    isSaving = false,
 }) => {
     const isEditMode = mode === 'edit';
 
@@ -188,11 +192,11 @@ export const AddressSection = ({
 
                 {isEditMode && (
                     <div className="section-actions section-actions--compact address-section-actions">
-                        <button type="button" onClick={onUndo} className="entry-undo-btn">
+                        <button type="button" onClick={onUndo} className="entry-undo-btn" disabled={isSaving}>
                             Undo
                         </button>
-                        <button type="button" onClick={onSave} className="entry-save-btn">
-                            Save
+                        <button type="button" onClick={onSave} className="entry-save-btn" disabled={isSaving}>
+                            {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     </div>
                 )}

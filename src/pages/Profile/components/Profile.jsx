@@ -48,31 +48,18 @@ const STATE_DISTRICT_MAX_LEN = 100;
 const MIN_AGE_YEARS = 18;
 const EDU_INST_UNIV_MAX_LEN = 100;
 
-const validateFullName = (val) => {
-    if (!val || typeof val !== 'string') return null;
-    const t = val.trim();
-    if (t.length < NAME_MIN_LEN) return 'Full Name must contain at least 2 characters.';
-    if (t.length > NAME_MAX_LEN) return `Full Name cannot exceed ${NAME_MAX_LEN} characters.`;
-    const hasLetters = /[a-zA-Z]/.test(t);
-    const onlyDigits = /^\d+$/.test(t.replace(/\s/g, ''));
-    const onlySpecial = !/[a-zA-Z0-9]/.test(t.replace(/\s/g, ''));
-    if (!hasLetters || onlyDigits) return 'Full Name must contain letters (cannot be numbers only).';
-    if (onlySpecial) return 'Full Name must contain letters (cannot be special characters only).';
-    return null;
-};
+const NAME_PATTERN = /^[A-Za-z][A-Za-z ]*$/;
 
 const validatePersonName = (val, label) => {
     if (!val || typeof val !== 'string') return null;
     const t = val.trim();
     if (t.length < NAME_MIN_LEN) return `${label} must contain at least ${NAME_MIN_LEN} characters.`;
     if (t.length > NAME_MAX_LEN) return `${label} cannot exceed ${NAME_MAX_LEN} characters.`;
-    const hasLetters = /[a-zA-Z]/.test(t);
-    const onlyDigits = /^\d+$/.test(t.replace(/\s/g, ''));
-    const onlySpecial = !/[a-zA-Z0-9]/.test(t.replace(/\s/g, ''));
-    if (!hasLetters || onlyDigits) return `${label} must contain letters (cannot be numbers only).`;
-    if (onlySpecial) return `${label} must contain letters (cannot be special characters only).`;
+    if (!NAME_PATTERN.test(t)) return `${label} can contain only letters and spaces.`;
     return null;
 };
+
+const validateFullName = (val) => validatePersonName(val, 'Full Name');
 
 const validateDateOfBirth = (dobStr) => {
     if (!dobStr || typeof dobStr !== 'string') return null;
@@ -178,6 +165,8 @@ export const Profile = () => {
     // --- UI/Control STATES ---
     const [showEditCards, setShowEditCards] = useState(false);
     const [expandedSection, setExpandedSection] = useState(null);
+    const [savingSection, setSavingSection] = useState(null);
+    const savingSectionRef = useRef(null);
     const [errors, setErrors] = useState({});
     const [currentAvatarUrl, setCurrentAvatarUrl] = useState(DEFAULT_AVATAR_URL);
     const [profileLoading, setProfileLoading] = useState(true);
@@ -738,6 +727,9 @@ export const Profile = () => {
         if (name === 'mobile' || name === 'emergency') {
             value = String(value).replace(/\D/g, '').slice(0, 10);
         }
+        if (name === 'fullName' || name === 'fatherName' || name === 'motherName') {
+            value = String(value).replace(/[^A-Za-z ]/g, '').replace(/^ +/, '').slice(0, NAME_MAX_LEN);
+        }
         setFormData((prev) => ({ ...prev, [name]: value }));
         setErrors((prev) => ({ ...prev, [name]: '' }));
     };
@@ -1140,6 +1132,7 @@ export const Profile = () => {
     }, [formData, currentAddress, permanentAddress, sameAsCurrent, previousEmployment, files, documentMeta, educationDetails]);
 
     const handleSectionSave = async (sectionName) => {
+        if (savingSectionRef.current) return false;
         let isValid = true;
         let documentSaveErrors = null;
 
@@ -1183,16 +1176,23 @@ export const Profile = () => {
             return false;
         }
 
+        savingSectionRef.current = sectionName;
+        setSavingSection(sectionName);
         const loadingId = toast.loading('Saving…');
-        const ok = await saveSectionToBackend(sectionName);
-        toast.dismiss(loadingId);
-        if (ok) {
-            applySectionSavedState(sectionName);
-            if (sectionName === 'employment') {
-                await fetchProfile({ silent: true });
+        try {
+            const ok = await saveSectionToBackend(sectionName);
+            if (ok) {
+                applySectionSavedState(sectionName);
+                if (sectionName === 'employment') {
+                    await fetchProfile({ silent: true });
+                }
             }
+            return ok;
+        } finally {
+            toast.dismiss(loadingId);
+            savingSectionRef.current = null;
+            setSavingSection(null);
         }
-        return ok;
     };
 
     const handleSectionUndo = (sectionName) => {
@@ -1319,6 +1319,7 @@ export const Profile = () => {
                     onChange={handleFormChange}
                     onSave={() => handleSectionSave('personal')}
                     onUndo={() => handleSectionUndo('personal')}
+                    isSaving={savingSection === 'personal'}
                     errors={errors}
                 />
                 
@@ -1335,6 +1336,7 @@ export const Profile = () => {
                     onSameAsCurrentToggle={handleSameAsCurrentToggle}
                     onSave={() => handleSectionSave('address')}
                     onUndo={() => handleSectionUndo('address')}
+                    isSaving={savingSection === 'address'}
                     errors={errors}
                 />
                 {/* ... (Other sections omitted for brevity) ... */}
@@ -1350,6 +1352,7 @@ export const Profile = () => {
                     onRemovePrevEmp={handleRemovePreviousEmployment}
                     onSave={() => handleSectionSave('employment')}
                     onUndo={() => handleSectionUndo('employment')}
+                    isSaving={savingSection === 'employment'}
                     errors={errors}
                 />
                 {/* 🛑 4th: Insert EducationSection here */}
@@ -1363,6 +1366,7 @@ export const Profile = () => {
                     onRemove={handleRemoveEducation}
                     onSave={() => handleSectionSave('education')}
                     onUndo={() => handleSectionUndo('education')}
+                    isSaving={savingSection === 'education'}
                     adminId={adminId}
                     uploadProfileFileUrl={`${API_BASE_URL}/upload-profile-file`}
                     errors={errors}
@@ -1377,6 +1381,7 @@ export const Profile = () => {
                     onMetaChange={handleDocumentMetaChange}
                     onSave={() => handleSectionSave('documents')}
                     onUndo={() => handleSectionUndo('documents')}
+                    isSaving={savingSection === 'documents'}
                     errors={errors}
                     adminId={adminId}
                     uploadProfileFileUrl={`${API_BASE_URL}/upload-profile-file`}

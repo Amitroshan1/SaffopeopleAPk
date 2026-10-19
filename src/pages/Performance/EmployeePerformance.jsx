@@ -17,10 +17,13 @@ function currentMonthValue() {
   return `${y}-${m}`;
 }
 
+function currentMonthLabel() {
+  return new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
 const formatDateTime = (value) => formatDateTimeDDMMYYYY(value, "-");
 
 export const EmployeePerformance = () => {
-  const [month, setMonth] = useState(currentMonthValue());
   const [achievements, setAchievements] = useState("");
   const [challenges, setChallenges] = useState("");
   const [goalsNextMonth, setGoalsNextMonth] = useState("");
@@ -72,8 +75,8 @@ export const EmployeePerformance = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!month.trim() || !achievements.trim()) {
-      setError("Month and achievements are required.");
+    if (!achievements.trim()) {
+      setError("Achievements are required.");
       return;
     }
     setSaving(true);
@@ -85,7 +88,7 @@ export const EmployeePerformance = () => {
           ...authHeaders(),
         },
         body: JSON.stringify({
-          month: month.trim(),
+          month: currentMonthValue(),
           achievements: achievements.trim(),
           challenges: challenges.trim(),
           goals_next_month: goalsNextMonth.trim(),
@@ -122,10 +125,11 @@ export const EmployeePerformance = () => {
             <label htmlFor="performance-month">Month</label>
             <input
               id="performance-month"
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              required
+              type="text"
+              className="performance-month-fixed"
+              value={currentMonthLabel()}
+              readOnly
+              tabIndex={-1}
             />
           </div>
 
@@ -205,11 +209,11 @@ export const EmployeePerformance = () => {
               <tbody>
                 {sortedHistory.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.month || "-"}</td>
-                    <td>{item.status || "-"}</td>
-                    <td>{formatDateTime(item.submitted_at)}</td>
-                    <td>{item.review?.rating || "-"}</td>
-                    <td>{item.review?.comments || "-"}</td>
+                    <td data-label="Month">{item.month || "-"}</td>
+                    <td data-label="Status">{item.status || "-"}</td>
+                    <td data-label="Submitted At">{formatDateTime(item.submitted_at)}</td>
+                    <td data-label="Manager Rating">{item.review?.rating || "-"}</td>
+                    <td data-label="Manager Comments">{item.review?.comments || "-"}</td>
                   </tr>
                 ))}
               </tbody>
