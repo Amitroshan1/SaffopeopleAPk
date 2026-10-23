@@ -23,6 +23,46 @@ function getWebCoordinates(timeoutMs = 20000) {
   });
 }
 
+function toCoords(position) {
+  return {
+    lat: position.coords.latitude,
+    lon: position.coords.longitude,
+    accuracy_m: position.coords.accuracy ?? null,
+    device_class: Capacitor?.getPlatform?.() || 'android',
+  };
+}
+
+async function getNativePositionOnce({ enableHighAccuracy, timeout, maximumAge }) {
+  const position = await Geolocation.getCurrentPosition({
+    enableHighAccuracy,
+    timeout,
+    maximumAge,
+  });
+  return toCoords(position);
+}
+
+/**
+ * iOS-only: coarse/fast first, then high accuracy, with retries.
+ * Android keeps a single high-accuracy request (unchanged behavior).
+ */
+async function getIosCoordinates(timeoutMs) {
+  const attempts = [
+    { enableHighAccuracy: false, timeout: Math.min(8000, timeoutMs), maximumAge: 30000 },
+    { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 10000 },
+    { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 },
+  ];
+
+  let lastError;
+  for (const opts of attempts) {
+    try {
+      return await getNativePositionOnce(opts);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('Location unavailable');
+}
+
 /**
  * Native GPS via Capacitor on Android/iOS; browser API on web.
  * Required for reliable punch in/out permissions on mobile WebView.
@@ -41,17 +81,15 @@ export async function getCurrentCoordinates(options = {}) {
     throw err;
   }
 
+  if (Capacitor.getPlatform() === 'ios') {
+    return getIosCoordinates(timeout);
+  }
+
   const position = await Geolocation.getCurrentPosition({
     enableHighAccuracy: true,
     timeout,
     maximumAge: 10000,
   });
 
-  return {
-    lat: position.coords.latitude,
-    lon: position.coords.longitude,
-    accuracy_m: position.coords.accuracy ?? null,
-    device_class: Capacitor?.getPlatform?.() || 'android',
-  };
+  return toCoords(position);
 }
-

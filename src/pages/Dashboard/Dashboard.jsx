@@ -18,6 +18,7 @@ import {
 import { MdBadge } from "react-icons/md";
 import { GiReceiveMoney } from "react-icons/gi";
 import { IoMdPerson } from "react-icons/io";
+import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import "./Dashboard.css";
 import { hasFeature } from "../../utils/planFeatures";
@@ -636,17 +637,9 @@ export const Dashboard = () => {
         runAutoCapPunchOut,
     ]);
 
-    useRefreshOnNavigate(() => {
-        void fetchDashboardData(false);
-    });
-
-    useEffect(() => {
-        const onSoftRefresh = () => {
-            void fetchDashboardData(false, { force: true });
-        };
-        window.addEventListener(APP_SOFT_REFRESH_EVENT, onSoftRefresh);
-        return () => window.removeEventListener(APP_SOFT_REFRESH_EVENT, onSoftRefresh);
-    }, [fetchDashboardData]);
+    const locationRefreshSeqRef = useRef(0);
+    const isIosNative =
+      isNativeApp() && Capacitor.getPlatform() === "ios";
 
   const validateLocationRange = async (lat, lon) => {
     const token = localStorage.getItem("token");
@@ -683,15 +676,22 @@ export const Dashboard = () => {
   };
 
   const refreshLocation = useCallback(async (showPermissionAlert = false) => {
+    const seq = ++locationRefreshSeqRef.current;
     setIsRefreshingLocation(true);
     try {
       const coords = await getCurrentCoordinates({ timeout: 12000 });
+      if (seq !== locationRefreshSeqRef.current) {
+        return { ok: false, stale: true };
+      }
       const lat = coords?.lat;
       const lon = coords?.lon;
       if (lat == null || lon == null) {
         throw new Error("Location unavailable");
       }
       const locationData = await validateLocationRange(lat, lon);
+      if (seq !== locationRefreshSeqRef.current) {
+        return { ok: false, stale: true };
+      }
       const inRange = !!locationData?.in_range;
       const requiresReason = !!locationData?.requires_reason || !inRange;
       const zone = locationData?.zone || "NO_GPS";
@@ -719,15 +719,30 @@ export const Dashboard = () => {
         zone,
       };
     } catch (err) {
+      if (seq !== locationRefreshSeqRef.current) {
+        return { ok: false, stale: true };
+      }
       const denied = String(err?.message || "").toLowerCase().includes("permission");
-      setLocation((prev) => ({
-        ...prev,
-        error: denied
-          ? "Location permission denied. Enable location to use Punch In/Out."
-          : "Location access denied or unavailable. Punch In/Out requires location.",
-        isAvailable: false,
-        isInRange: false,
-      }));
+      const keepLastFix =
+        isNativeApp() &&
+        Capacitor.getPlatform() === "ios" &&
+        !denied;
+      setLocation((prev) => {
+        if (keepLastFix && prev.isAvailable && prev.lat != null && prev.lon != null) {
+          return {
+            ...prev,
+            error: prev.error,
+          };
+        }
+        return {
+          ...prev,
+          error: denied
+            ? "Location permission denied. Enable location to use Punch In/Out."
+            : "Unable to get GPS right now. Tap refresh and try again.",
+          isAvailable: false,
+          isInRange: false,
+        };
+      });
       if (showPermissionAlert) {
         alert(
           denied
@@ -737,9 +752,29 @@ export const Dashboard = () => {
       }
       return { ok: false, error: err };
     } finally {
-      setIsRefreshingLocation(false);
+      if (seq === locationRefreshSeqRef.current) {
+        setIsRefreshingLocation(false);
+      }
     }
   }, []);
+
+    useRefreshOnNavigate(() => {
+        void fetchDashboardData(false);
+        if (isIosNative) {
+          void refreshLocation(false);
+        }
+    });
+
+    useEffect(() => {
+        const onSoftRefresh = () => {
+            void fetchDashboardData(false, { force: true });
+            if (isIosNative) {
+              void refreshLocation(false);
+            }
+        };
+        window.addEventListener(APP_SOFT_REFRESH_EVENT, onSoftRefresh);
+        return () => window.removeEventListener(APP_SOFT_REFRESH_EVENT, onSoftRefresh);
+    }, [fetchDashboardData, isIosNative, refreshLocation]);
 
     useEffect(() => {
         const checkLocation = async () => {
@@ -1310,7 +1345,15 @@ export const Dashboard = () => {
                             <div className="attendance-corner-meta">
                                 <span className={`location-pill ${location.isAvailable && location.isInRange ? 'on' : 'off'}`}>
                                     <span className="location-dot"></span>
-                                    {location.isAvailable && location.isInRange ? 'In range' : 'Off'}
+                                    {isIosNative
+                                      ? (isRefreshingLocation && !location.isAvailable
+                                          ? 'Checking…'
+                                          : location.isAvailable && location.isInRange
+                                            ? 'In range'
+                                            : location.isAvailable
+                                              ? 'Out of range'
+                                              : 'Off')
+                                      : (location.isAvailable && location.isInRange ? 'In range' : 'Off')}
                                 </span>
                                 <div className={`status-badge-main ${isActive ? 'active' : 'inactive'}`}>
                                     <span className={`status-pulse-dot ${isActive ? 'active' : ''}`}></span>
@@ -1372,7 +1415,11 @@ export const Dashboard = () => {
                                     {/* Action Buttons */}
                                     {!location.isAvailable && (
                                         <p className="punch-location-hint" role="status">
-                                            Turn on Location to punch in.
+                                            {isIosNative
+                                              ? (isRefreshingLocation
+                                                  ? 'Getting your location…'
+                                                  : 'Unable to get GPS right now. Tap refresh and try again.')
+                                              : 'Turn on Location to punch in.'}
                                         </p>
                                     )}
                                     <div className="status-action-buttons">
