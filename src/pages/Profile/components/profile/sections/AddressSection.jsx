@@ -33,7 +33,7 @@ export const AddressBlock = ({
 
             {isEditMode ? (
                 <div className="address-block__form">
-                    {isCurrent && (
+                    {!isCurrent && (
                         <label className="address-same-checkbox">
                             <input
                                 type="checkbox"
@@ -173,7 +173,6 @@ export const AddressSection = ({
                     onChange={onAddressChange}
                     errors={errors}
                     sameAsCurrent={sameAsCurrent}
-                    onSameAsCurrentToggle={onSameAsCurrentToggle}
                     onPincodeBlur={onPincodeBlur}
                     pincodeLoading={pincodeLoading.current}
                 />
@@ -186,6 +185,7 @@ export const AddressSection = ({
                     onChange={onAddressChange}
                     errors={errors}
                     sameAsCurrent={sameAsCurrent}
+                    onSameAsCurrentToggle={onSameAsCurrentToggle}
                     onPincodeBlur={onPincodeBlur}
                     pincodeLoading={pincodeLoading.permanent}
                 />

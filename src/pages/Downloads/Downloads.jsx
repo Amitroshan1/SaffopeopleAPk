@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FaTrash, FaShareAlt, FaFileAlt } from "react-icons/fa";
+import { FaTrash, FaExternalLinkAlt, FaFileAlt } from "react-icons/fa";
 import { useUser } from "../../components/layout/UserContext";
 import {
   listUserDownloads,
   removeUserDownload,
   clearUserDownloads,
-  shareUserDownload,
+  openUserDownload,
   resolveDownloadUserId,
 } from "../../mobile/native/nativeDownload";
 import { isNativeApp } from "../../mobile/native/platform";
@@ -50,7 +50,7 @@ export function Downloads() {
     }
     setBusyId(item.id);
     try {
-      await shareUserDownload(item);
+      await openUserDownload(item);
     } catch (e) {
       alert(e?.message || "Unable to open file");
     } finally {
@@ -131,7 +131,7 @@ export function Downloads() {
                     onClick={() => handleOpen(item)}
                     disabled={busyId === item.id}
                   >
-                    <FaShareAlt />
+                    <FaExternalLinkAlt />
                     <span>{busyId === item.id ? "Opening..." : "Open"}</span>
                   </button>
                 )}

@@ -1,4 +1,5 @@
 import { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { setPlanContext, clearPlanContext } from '../../utils/planFeatures';
 import { clearSensitiveToken } from '../../utils/sensitiveDataAuth';
 import { setDownloadUserId } from '../../mobile/native/nativeDownload';
@@ -15,7 +16,7 @@ export const UserProvider = ({ children }) => {
   const [userData, setUserData] = useState({
     user: {},
     employee: {},
-    leave_balance: { pl: 'N/A', cl: 'N/A' },
+    leave_balance: { pl: null, cl: null },
     managers: {},
     punch: {},
     last_leave: null,
@@ -25,6 +26,7 @@ export const UserProvider = ({ children }) => {
   const [loadingUser, setLoadingUser] = useState(true);
   const [photoVersion, setPhotoVersion] = useState(0);
   const fetchCoreUserDataRef = useRef(null);
+  const navigate = useNavigate();
 
   const applyHomepageResult = useCallback((result) => {
     if (!result?.success) return;
@@ -69,13 +71,16 @@ export const UserProvider = ({ children }) => {
         clearSensitiveToken();
         clearPlanContext();
         clearHomepageCache();
+
+        alert("Session expired. Please login again.");
+        navigate("/", { replace: true });
       }
       console.error('User Context Fetch error:', err);
       return null;
     } finally {
       setLoadingUser(false);
     }
-  }, [applyHomepageResult]);
+  }, [applyHomepageResult, navigate]);
 
   fetchCoreUserDataRef.current = fetchCoreUserData;
 

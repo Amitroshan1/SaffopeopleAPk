@@ -265,6 +265,7 @@ export const ProfileViewLayout = ({
                                         <div className="profile-compact-grid">
                                             <Info label="Company" value={row.companyName} wide />
                                             <Info label="Designation" value={row.designation} />
+                                            <Info label="Joined on" value={formatDateForDisplay(row.dateOfJoining)} />
                                             <Info label="Left on" value={formatDateForDisplay(row.dateOfLeaving)} />
                                             <Info label="Experience (yrs)" value={row.experienceYears} />
                                         </div>

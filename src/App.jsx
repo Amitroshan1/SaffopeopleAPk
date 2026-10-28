@@ -88,11 +88,11 @@ if (isFirstLoad) {
 
 function AppRoot() {
   return (
-    <>
+    <UserProvider>
       <ScrollToTop />
       <NativeBackHandler />
       <Outlet />
-    </>
+    </UserProvider>
   );
 }
 
@@ -204,7 +204,7 @@ export const App = () => {
   ]);
 
   return (
-    <UserProvider>
+    <>
       <ToastContainer
         position="bottom-right"
         autoClose={4000}
@@ -216,6 +216,6 @@ export const App = () => {
         draggable
       />
       <RouterProvider router={router} />
-    </UserProvider>
+    </>
   );
 };

@@ -27,6 +27,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(FileOpenPlugin.class);
         setTheme(R.style.AppTheme_NoActionBar);
         super.onCreate(savedInstanceState);
         getWindow().setFlags(

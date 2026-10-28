@@ -194,6 +194,7 @@ export function getProfileSectionCompletion(
         const hasAny =
             isFilled(row?.companyName) ||
             isFilled(row?.designation) ||
+            isFilled(row?.dateOfJoining) ||
             isFilled(row?.dateOfLeaving) ||
             isFilled(row?.experienceYears);
         if (!hasAny) return;

@@ -9,6 +9,19 @@ html.capacitor-native {
   --safe-top: 0px;
 }
 
+/* Black status strip only — does not change header height/layout */
+html.capacitor-native::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: max(var(--safe-top, 0px), env(safe-area-inset-top, 0px));
+  background: #000000;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
 html.capacitor-native body {
   padding-top: 0;
   padding-right: env(safe-area-inset-right, 0px);

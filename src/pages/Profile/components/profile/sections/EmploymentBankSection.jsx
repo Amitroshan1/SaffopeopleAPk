@@ -114,9 +114,10 @@ export const EmploymentBankSection = ({
     /* =========================
        VALIDATION
     ========================= */
-    const mandatoryKeys = [];
-    const hasMandatoryErrors =
-        isEditMode && mandatoryKeys.some(key => errors[key]);
+    const hasPrevDateErrors = (prevEmpData || []).some(
+        (_, index) => errors[`dateOfLeaving_${index}`] || errors[`dateOfJoining_${index}`]
+    );
+    const hasMandatoryErrors = isEditMode && hasPrevDateErrors;
 
     return (
         <AccordionCard

@@ -12,6 +12,7 @@ const ViewEmploymentEntry = ({ entry, index }) => (
         <h4 style={{ gridColumn: 'span 3' }}><span style={GRADIENT_HEADER_STYLE}>Employment #{index + 1}</span></h4>
         <Info label="Company Name" value={entry.companyName} />
         <Info label="Designation" value={entry.designation} />
+        <Info label="Date of Joining" value={entry.dateOfJoining} />
         <Info label="Date of Leaving" value={entry.dateOfLeaving} />
         <Info label="Experience (Years)" value={entry.experienceYears} />
     </div>
@@ -35,8 +36,11 @@ export const PreviousEmploymentSection = ({
     const hasErrors = prevEmpData.some((_, index) => 
         errors[`prevEmp_${index}_companyName`] ||
         errors[`prevEmp_${index}_designation`] ||
+        errors[`prevEmp_${index}_dateOfJoining`] ||
         errors[`prevEmp_${index}_dateOfLeaving`] ||
-        errors[`prevEmp_${index}_experienceYears`]
+        errors[`prevEmp_${index}_experienceYears`] ||
+        errors[`dateOfJoining_${index}`] ||
+        errors[`dateOfLeaving_${index}`]
     );
 
     const content = prevEmpData.length === 0 && !isEditMode ? (
@@ -81,12 +85,23 @@ export const PreviousEmploymentSection = ({
                             </div>
                             
                             <Input 
+                                label="Date of Joining" 
+                                name="dateOfJoining" 
+                                type="date"
+                                max={entry.dateOfLeaving || new Date().toISOString().slice(0, 10)}
+                                value={entry.dateOfJoining || ''} 
+                                onChange={(e) => onPrevEmpChange(index, e.target.name, e.target.value)}
+                                error={errors[`${indexPrefix}dateOfJoining`] || errors[`dateOfJoining_${index}`]}
+                            />
+                            <Input 
                                 label="Date of Leaving" 
                                 name="dateOfLeaving" 
                                 type="date"
+                                min={entry.dateOfJoining || undefined}
+                                max={new Date().toISOString().slice(0, 10)}
                                 value={entry.dateOfLeaving} 
                                 onChange={(e) => onPrevEmpChange(index, e.target.name, e.target.value)}
-                                error={errors[`${indexPrefix}dateOfLeaving`]}
+                                error={errors[`${indexPrefix}dateOfLeaving`] || errors[`dateOfLeaving_${index}`]}
                             />
                             <Input 
                                 label="Experience (Years)" 
@@ -96,7 +111,6 @@ export const PreviousEmploymentSection = ({
                                 onChange={(e) => onPrevEmpChange(index, e.target.name, e.target.value)}
                                 error={errors[`${indexPrefix}experienceYears`]}
                             />
-                            <div/> {/* Spacer */}
                         </div>
                     </div>
                 );
@@ -132,6 +146,7 @@ PreviousEmploymentSection.propTypes = {
     prevEmpData: PropTypes.arrayOf(PropTypes.shape({
         companyName: PropTypes.string.isRequired,
         designation: PropTypes.string.isRequired,
+        dateOfJoining: PropTypes.string,
         dateOfLeaving: PropTypes.string.isRequired,
         experienceYears: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
     })).isRequired,

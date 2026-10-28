@@ -685,6 +685,7 @@ export const Profile = () => {
     const handleDoneEditing = useCallback(async () => {
         try {
             if (hasNoChanges()) {
+                showToast('No changes to save.', 'success');
                 exitEditMode();
                 return;
             }
@@ -843,17 +844,55 @@ export const Profile = () => {
     };
 
     const handlePreviousEmploymentChange = (index, name, value) => {
-        setPreviousEmployment(prev => {
+        let finalValue = value;
+        const today = (() => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })();
+
+        if ((name === 'dateOfLeaving' || name === 'dateOfJoining') && finalValue) {
+            if (String(finalValue) > today) {
+                const label = name === 'dateOfJoining' ? 'Date of Joining' : 'Date of Leaving';
+                setErrors((prev) => ({
+                    ...prev,
+                    [`${name}_${index}`]: `${label} cannot be a future date.`,
+                }));
+                return;
+            }
+        }
+
+        setPreviousEmployment((prev) => {
+            const current = prev[index] || {};
+            const nextRow = { ...current, [name]: finalValue };
+            const join = nextRow.dateOfJoining ? String(nextRow.dateOfJoining).split('T')[0] : '';
+            const leave = nextRow.dateOfLeaving ? String(nextRow.dateOfLeaving).split('T')[0] : '';
+            if (join && leave && join > leave) {
+                queueMicrotask(() => {
+                    setErrors((prevErrors) => ({
+                        ...prevErrors,
+                        [`dateOfJoining_${index}`]: 'Date of Joining cannot be after Date of Leaving.',
+                    }));
+                });
+                return prev;
+            }
             const newArray = [...prev];
-            newArray[index] = { ...newArray[index], [name]: value };
+            newArray[index] = nextRow;
             return newArray;
         });
+
+        if (name === 'dateOfLeaving' || name === 'dateOfJoining') {
+            setErrors((prev) => ({
+                ...prev,
+                [`dateOfLeaving_${index}`]: '',
+                [`dateOfJoining_${index}`]: '',
+            }));
+        }
     };
 
     const handleAddPreviousEmployment = () => {
         setPreviousEmployment(prev => [
             ...prev,
-            { companyName: '', designation: '', dateOfLeaving: '', experienceYears: '' }
+            { companyName: '', designation: '', dateOfJoining: '', dateOfLeaving: '', experienceYears: '' }
         ]);
     };
 
@@ -1004,7 +1043,36 @@ export const Profile = () => {
             }
         });
 
-        setErrors(prev => ({ ...prev, ...sectionErrors }));
+        const today = (() => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })();
+
+        (previousEmployment || []).forEach((row, index) => {
+            const joining = row?.dateOfJoining ? String(row.dateOfJoining).split('T')[0] : '';
+            const leaving = row?.dateOfLeaving ? String(row.dateOfLeaving).split('T')[0] : '';
+            if (joining && joining > today) {
+                sectionErrors[`dateOfJoining_${index}`] = 'Date of Joining cannot be a future date.';
+                hasErrors = true;
+            }
+            if (leaving && leaving > today) {
+                sectionErrors[`dateOfLeaving_${index}`] = 'Date of Leaving cannot be a future date.';
+                hasErrors = true;
+            }
+            if (joining && leaving && joining > leaving) {
+                sectionErrors[`dateOfJoining_${index}`] = 'Date of Joining cannot be after Date of Leaving.';
+                hasErrors = true;
+            }
+        });
+
+        setErrors((prev) => {
+            const next = { ...prev };
+            (previousEmployment || []).forEach((_, index) => {
+                delete next[`dateOfLeaving_${index}`];
+                delete next[`dateOfJoining_${index}`];
+            });
+            return { ...next, ...sectionErrors };
+        });
         return !hasErrors;
     };
 
@@ -1298,14 +1366,14 @@ export const Profile = () => {
                         className="profile-edit-btn profile-edit-btn--discard"
                         onClick={handleUndoChanges}
                     >
-                        Discard
+                        Cancel
                     </button>
                     <button
                         type="button"
                         className="profile-edit-btn profile-edit-btn--done"
                         onClick={() => handleDoneEditing().catch(() => {})}
                     >
-                        Done
+                        Save & Exit
                     </button>
                 </div>
             </header>

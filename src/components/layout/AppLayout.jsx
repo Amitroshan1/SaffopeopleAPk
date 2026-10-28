@@ -16,8 +16,10 @@ import { useUser } from "./UserContext"; // Import the hook
 import { AppFooter } from "./AppFooter";
 import { BottomNav } from "./BottomNav";
 import { useFloatingNotifications } from "../../hooks/useFloatingNotifications";
+import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { isNativeApp } from "../../mobile/native/platform";
 import { cacheBustPhotoUrl, normalizePhotoUrl } from "../../utils/userPhoto";
+import { OfflinePopup } from "../OfflinePopup";
 import { dispatchAppSoftRefresh } from "../../utils/homepageApi";
 import { shouldRefreshUserOnNavigate } from "../../utils/appRefreshPolicy";
 // import "../../pages/style/Dashboard.css"
@@ -34,6 +36,8 @@ export const AppLayout = () => {
     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("token");
     const [isGlobalRefreshing, setIsGlobalRefreshing] = useState(false);
     const [pullDistance, setPullDistance] = useState(0);
+    const isOnline = useNetworkStatus();
+    const [wasOffline, setWasOffline] = useState(false);
 
     useFloatingNotifications(hasToken && !loadingUser);
 
@@ -121,6 +125,14 @@ export const AppLayout = () => {
             window.removeEventListener("touchcancel", onTouchEnd);
         };
     }, [handleGlobalSoftRefresh, hasToken, isGlobalRefreshing, location.pathname]);
+
+    /* Refresh user data when internet comes back after being offline */
+    useEffect(() => {
+        if (isOnline && wasOffline) {
+            refreshUserData({ force: true });
+        }
+        setWasOffline(!isOnline);
+    }, [isOnline, refreshUserData, wasOffline]);
 
     /* Refresh leave/punch-sensitive pages at most every 2 minutes on navigation. */
     useEffect(() => {
@@ -281,7 +293,8 @@ export const AppLayout = () => {
     return (
         <div className="main-layout app-layout">
             {/* The Header now gets the username and full user object from the centralized context */}
-            <Headers username={username} role={empType} user={headerUser} hasManagerAccess={userData.user?.has_manager_access} profilePic={profilePicWithCache} /> 
+            <Headers username={username} role={empType} user={headerUser} hasManagerAccess={userData.user?.has_manager_access} profilePic={profilePicWithCache} />
+            <OfflinePopup />
             {(isGlobalRefreshing || pullDistance > 0) && (
                 <div className={`global-pull-refresh${isGlobalRefreshing ? " is-active" : ""}`}>
                     <div className="global-pull-refresh__chip">

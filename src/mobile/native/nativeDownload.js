@@ -181,7 +181,26 @@ export async function clearUserDownloads(userId, { deleteFiles = false } = {}) {
 }
 
 /**
- * Re-open / share a previously saved native download.
+ * Open a previously saved native download in the system file viewer.
+ * Does not use the Share sheet.
+ */
+export async function openUserDownload(item) {
+  if (!item) throw new Error('File not found');
+  if (!isNativeApp() || (!item.uri && !item.path)) {
+    throw new Error('This file is not available for opening on this device.');
+  }
+  const { openNativeFile } = await import('./fileOpen.js');
+  await openNativeFile({
+    path: item.path,
+    uri: item.uri,
+    mimeType: item.mimeType,
+    fileName: item.fileName,
+  });
+  return { method: 'native' };
+}
+
+/**
+ * Share a previously saved native download (Share sheet).
  */
 export async function shareUserDownload(item) {
   if (!item) throw new Error('File not found');
@@ -190,12 +209,12 @@ export async function shareUserDownload(item) {
     await Share.share({
       title: item.fileName,
       url: item.uri,
-      dialogTitle: 'Open or share file',
+      dialogTitle: 'Share file',
     });
     return { method: 'native' };
   }
 
-  throw new Error('This file is not available for reopening on this device.');
+  throw new Error('This file is not available for sharing on this device.');
 }
 
 /**

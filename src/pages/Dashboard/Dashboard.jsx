@@ -1278,7 +1278,7 @@ export const Dashboard = () => {
                                 <h4 className="card-label">Leave Balance</h4>
                                 <h3 className="card-value">{totalLeave} Days</h3>
                                 <p className="card-subtext">
-                                    {dynamicData.leave_balance.pl} PL + {dynamicData.leave_balance.cl} CL
+                                    {dynamicData.leave_balance?.pl ?? '—'} PL + {dynamicData.leave_balance?.cl ?? '—'} CL
                                 </p>
                             </div>
                             <div className="card-icon-round sky-bg">

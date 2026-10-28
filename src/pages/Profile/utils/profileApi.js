@@ -105,6 +105,9 @@ export function mapProfileFromApi(p) {
         .map((pe) => ({
             companyName: normalizePrevField(pe.companyName || pe.com_name),
             designation: normalizePrevField(pe.designation),
+            dateOfJoining: (pe.dateOfJoining || pe.doj)
+                ? String(pe.dateOfJoining || pe.doj).split('T')[0]
+                : '',
             dateOfLeaving: (pe.dateOfLeaving || pe.dol)
                 ? String(pe.dateOfLeaving || pe.dol).split('T')[0]
                 : '',
@@ -114,6 +117,7 @@ export function mapProfileFromApi(p) {
             (row) =>
                 row.companyName ||
                 row.designation ||
+                row.dateOfJoining ||
                 row.dateOfLeaving ||
                 row.experienceYears
         );
@@ -229,12 +233,14 @@ export function buildPreviousCompanyItems(previousEmployment) {
                 row &&
                 (isFilled(row.companyName) ||
                     isFilled(row.designation) ||
+                    isFilled(row.dateOfJoining) ||
                     isFilled(row.dateOfLeaving) ||
                     isFilled(row.experienceYears))
         )
         .map((row) => ({
             companyName: String(row.companyName || '').trim(),
             designation: String(row.designation || '').trim(),
+            dateOfJoining: row.dateOfJoining ? String(row.dateOfJoining).split('T')[0] : '',
             dateOfLeaving: row.dateOfLeaving ? String(row.dateOfLeaving).split('T')[0] : '',
             experienceYears: String(row.experienceYears ?? '').trim(),
         }));

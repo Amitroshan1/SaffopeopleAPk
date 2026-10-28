@@ -234,22 +234,22 @@ export const Leaves= () => {
         return [
             { 
                 type: 'Casual Leave', 
-                value: remainingCl,  // Big number: Show remaining/pending (e.g., 5)
-                subtext: `Total ${totalCl}, Used ${usedCasual}`,  // Subtext: Total entitlement (8) and how much used
+                value: remainingCl ?? '—',  // Big number: Show remaining/pending (e.g., 5)
+                subtext: `Total ${totalCl ?? '—'}, Used ${usedCasual ?? '—'}`,  // Subtext: Total entitlement (8) and how much used
                 icon: <FiSun size={22} />, 
                 colorClass: 'green-card'
             },
             { 
                 type: 'Privilege Leave', 
-                value: remainingPl,  // Big number: Show remaining/pending (e.g., 11)
-                subtext: `Total ${totalPl}, Used ${usedPrivilege}`,  // Subtext: Total entitlement (13) and how much used
+                value: remainingPl ?? '—',  // Big number: Show remaining/pending (e.g., 11)
+                subtext: `Total ${totalPl ?? '—'}, Used ${usedPrivilege ?? '—'}`,  // Subtext: Total entitlement (13) and how much used
                 icon: <FiStar size={22} />, 
                 colorClass: 'blue-card'
             },
             {
                 type: 'Compensatory Leave',
-                value: remainingComp,
-                subtext: `${compSubtext} · tap for details`,
+                value: remainingComp ?? '—',
+                subtext: `${compSubtext ?? '—'} · tap for details`,
                 icon: <FiRefreshCw size={22} />,
                 colorClass: 'orange-card',
                 clickable: true,
