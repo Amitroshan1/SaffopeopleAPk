@@ -1363,17 +1363,10 @@ export const Profile = () => {
                 <div className="profile-edit-toolbar__actions">
                     <button
                         type="button"
-                        className="profile-edit-btn profile-edit-btn--discard"
-                        onClick={handleUndoChanges}
+                        className="profile-edit-btn profile-edit-btn--close"
+                        onClick={exitEditMode}
                     >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        className="profile-edit-btn profile-edit-btn--done"
-                        onClick={() => handleDoneEditing().catch(() => {})}
-                    >
-                        Save & Exit
+                        Close
                     </button>
                 </div>
             </header>

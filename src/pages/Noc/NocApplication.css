@@ -1,0 +1,407 @@
+.noc-application {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100%;
+    padding: 0 12px 20px;
+    background: #f4f7f6;
+    color: #111827;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.noc-application *,
+.noc-application *::before,
+.noc-application *::after {
+    box-sizing: border-box;
+}
+
+.noc-application__shell {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.noc-application__loading {
+    padding: 24px 16px;
+    text-align: center;
+    color: #6b7280;
+}
+
+.noc-application__card {
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    padding: 18px 16px 16px 20px;
+}
+
+.noc-application__card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, #4f46e5 0%, #6366f1 100%);
+}
+
+.noc-application__card-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    width: 100%;
+    margin: 0 0 1.15rem;
+    padding: 0 0 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.noc-application__card-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.3;
+    background: linear-gradient(to right, #4f46e5, #3b82f6, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+}
+
+.noc-application__card-head p {
+    width: 100%;
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.noc-application__step {
+    color: #4f46e5;
+    -webkit-text-fill-color: #4f46e5;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.noc-application__alert {
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.noc-application__alert--error {
+    background: #fef2f2;
+    color: #991b1b;
+    border-left: 4px solid #dc2626;
+}
+
+.noc-application__alert--success {
+    background: #ecfdf5;
+    color: #065f46;
+    border-left: 4px solid #10b981;
+}
+
+.noc-application__alert--warning {
+    background: #fffbeb;
+    color: #92400e;
+    border-left: 4px solid #f59e0b;
+}
+
+.noc-application__alert a {
+    display: inline-block;
+    margin-top: 6px;
+    color: #4f46e5;
+    font-weight: 700;
+}
+
+.noc-application__details-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.noc-application__detail {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.noc-application__detail span,
+.noc-application__separation span {
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.noc-application__detail strong,
+.noc-application__separation strong {
+    color: #111827;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.noc-application__separation {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #eef2ff;
+    border-left: 4px solid #4f46e5;
+}
+
+.noc-application__separation p,
+.noc-application__history p,
+.noc-application__departments p,
+.noc-application__field small,
+.noc-application__actions p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.noc-application__field,
+.noc-application__departments {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    margin-top: 16px;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.noc-application__field-label,
+.noc-application__departments legend {
+    color: #111827;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.noc-application__field-label span,
+.noc-application__departments legend span {
+    color: #dc2626;
+}
+
+.noc-application input,
+.noc-application select,
+.noc-application textarea {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #fff;
+    color: #111827;
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.noc-application input:focus,
+.noc-application select:focus,
+.noc-application textarea:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.noc-application textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+.noc-application__field small {
+    text-align: right;
+}
+
+.noc-application__department-options,
+.noc-application__flow ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.noc-application__department-option,
+.noc-application__flow li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.noc-application__flow li.is-selected,
+.noc-application__department-option:has(input:checked) {
+    border-color: #4f46e5;
+    background: #eef2ff;
+    color: #3730a3;
+}
+
+.noc-application__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+    margin-top: 18px;
+}
+
+.noc-application__submit,
+.noc-application__request-file button,
+.noc-application__view-status,
+.noc-application__more {
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.noc-application__submit,
+.noc-application__request-file button {
+    width: 100%;
+    padding: 12px 16px;
+    background: linear-gradient(to right, #4f46e5, #3b82f6, #10b981);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+}
+
+.noc-application__submit:disabled,
+.noc-application__request-file button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.noc-application__history {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.noc-application__history article {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.noc-application__history article > div:first-child,
+.noc-application__request-file,
+.noc-application__status-list li {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+}
+
+.noc-application__history article > div:first-child strong {
+    color: #111827;
+    line-height: 1.4;
+}
+
+.noc-application__history article > div:first-child span,
+.noc-application__request-file span {
+    color: #6b7280;
+    font-size: 0.8rem;
+}
+
+.noc-application__view-status,
+.noc-application__more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e5e7eb;
+}
+
+.noc-application__status-list {
+    width: 100%;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.noc-application__status-list li {
+    padding: 8px 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+@media (min-width: 700px) {
+    .noc-application {
+        padding: 0 24px 32px;
+    }
+
+    .noc-application__card {
+        padding: 28px 28px 24px 32px;
+    }
+
+    .noc-application__details-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .noc-application__actions {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .noc-application__submit {
+        width: auto;
+        min-width: 180px;
+    }
+
+    .noc-application__history article > div:first-child,
+    .noc-application__request-file,
+    .noc-application__status-list li {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .noc-application__view-status,
+    .noc-application__more {
+        width: auto;
+    }
+}

@@ -1,0 +1,83 @@
+.force-update-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(37, 99, 235, 0.18), transparent 55%),
+    #0f172a;
+  box-sizing: border-box;
+}
+
+.force-update-card {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  color: #f8fafc;
+}
+
+.force-update-eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+
+.force-update-title {
+  margin: 0 0 12px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+}
+
+.force-update-message {
+  margin: 0 0 20px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.force-update-error {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #fca5a5;
+}
+
+.force-update-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.force-update-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.force-update-btn:not(:disabled):active {
+  background: #1d4ed8;
+}
+
+.force-update-note {
+  margin: 16px 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}

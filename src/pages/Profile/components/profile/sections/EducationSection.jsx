@@ -175,7 +175,7 @@ export const EducationSection = ({
                         className="entry-save-btn"
                         disabled={isSaving}
                     >
-                        {isSaving ? 'Saving…' : 'Save'}
+                        {isSaving ? 'Saving…' : 'Save Education Details'}
                     </button>
                 </div>
             )}

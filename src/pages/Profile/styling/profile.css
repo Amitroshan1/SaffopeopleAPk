@@ -2551,6 +2551,16 @@
     transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
+.profile-edit-btn--close {
+    background: #fff;
+    color: #334155;
+    border-color: #e2e8f0;
+}
+
+.profile-edit-btn--close:hover {
+    background: #f8fafc;
+}
+
 .profile-edit-btn--discard {
     background: #fff;
     color: #dc2626;

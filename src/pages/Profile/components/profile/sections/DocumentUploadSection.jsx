@@ -331,7 +331,7 @@ export const DocumentUploadSection = ({
                             Undo
                         </button>
                         <button type="button" onClick={onSave} className="entry-save-btn" disabled={isSaving}>
-                            {isSaving ? 'Saving…' : 'Save'}
+                            {isSaving ? 'Saving…' : 'Save Documents'}
                         </button>
                     </div>
                 ) : (

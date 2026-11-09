@@ -270,7 +270,7 @@ export const HeroSection = () => {
               </button>
             )}
           </div>
-          <p className="login-version">Version 1.0.0</p>
+          <p className="login-version">Version 2.0.0</p>
         </div>
       </main>
     </div>

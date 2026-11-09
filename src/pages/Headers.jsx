@@ -120,7 +120,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation, Link, NavLink, useNavigate } from 'react-router-dom';
 import { toast } from "react-toastify";
 import { clearLoginNotificationsFlag } from "../hooks/useFloatingNotifications";
-import { FaUser, FaSignOutAlt, FaBriefcase, FaHandshake, FaHome, FaChartLine, FaCalendarAlt, FaCog, FaDownload, FaBell } from "react-icons/fa";
+import { FaUser, FaSignOutAlt, FaBriefcase, FaHandshake, FaHome, FaChartLine, FaCalendarAlt, FaCog, FaDownload, FaBell, FaFileAlt } from "react-icons/fa";
 import { useNewsUnreadCount } from "../hooks/useNewsUnreadCount";
 import "./style/Headers.css";
 import { clearPlanContext } from "../utils/planFeatures";
@@ -171,6 +171,7 @@ const getPageInfo = (pathname, firstName) => {
         '/queries/inbox': { title: 'Department Query Inbox', subtitle: 'Reply to queries assigned to your department' },
         '/claims': { title: 'Expense Claims', subtitle: 'Submit and track your claims' },
         '/separation': { title: 'Separation', subtitle: 'Resignation and clearance process' },
+        '/noc-application': { title: 'Apply for NOC', subtitle: 'Request exit clearance or a bonafide letter' },
         '/payslip': { title: 'Payslip', subtitle: 'View and download payslips' },
         '/tax-declaration': { title: 'Tax Declaration', subtitle: 'Submit your tax investment declaration for the financial year' },
         '/tax-declaration/final-proof': { title: 'Year-end Final Proof', subtitle: 'Enter actual amounts and upload proof documents' },
@@ -544,6 +545,9 @@ const defaultAvatar = `https://ui-avatars.com/api/?name=${username}&background=2
                                 </Link>
                                 <Link to="/separation" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                                     <FaHandshake className="d-icon" /> <span>Separation</span>
+                                </Link>
+                                <Link to="/noc-application" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
+                                    <FaFileAlt className="d-icon" /> <span>Apply NOC</span>
                                 </Link>
                                 <Link to="/downloads" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                                     <FaDownload className="d-icon" /> <span>Downloads</span>

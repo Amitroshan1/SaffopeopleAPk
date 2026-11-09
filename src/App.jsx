@@ -29,6 +29,7 @@ import { Queries } from "./pages/Query/Queries";
 import { DepartmentQueryInbox } from "./pages/Query/DepartmentQueryInbox";
 import { Claims } from "./pages/Claims/Claims";
 import { Separation } from "./pages/Separation/Separation";
+import { NocApplication } from "./pages/Noc/NocApplication";
 import { Hr } from "./pages/HR/Hr";
 import { Account } from "./pages/Account/Account";
 import Admin from "./pages/Admin/Admin";
@@ -78,6 +79,7 @@ import AssessmentTestPublic from "./pages/Assessment/AssessmentTestPublic";
 import OfferAcceptPublic from "./pages/HR/OfferAcceptPublic";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { ForceUpdateGate } from "./mobile/updates/ForceUpdateGate";
 
 // Initialize localStorage on app start - clear old test data
 const isFirstLoad = !localStorage.getItem('_appInitialized');
@@ -151,6 +153,7 @@ export const App = () => {
         { path: "queries/inbox",                   element: <DepartmentQueryInbox /> },
         { path: "claims",                          element: <Claims /> },
         { path: "separation",                      element: <Separation /> },
+        { path: "noc-application",                 element: <NocApplication /> },
         { path: "wfh",                             element: <Wfh /> },
         { path: "performance",                     element: <EmployeePerformance /> },
         { path: "holiday-calendar",                element: <HolidayCalendarUser /> },
@@ -204,7 +207,7 @@ export const App = () => {
   ]);
 
   return (
-    <>
+    <ForceUpdateGate>
       <ToastContainer
         position="bottom-right"
         autoClose={4000}
@@ -216,6 +219,6 @@ export const App = () => {
         draggable
       />
       <RouterProvider router={router} />
-    </>
+    </ForceUpdateGate>
   );
 };

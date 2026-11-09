@@ -69,6 +69,11 @@
 
 /* ===== CARD HEADER ===== */
 .separation-page-wrapper .card-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.4rem;
   background: transparent;
   padding: 0 0 1.25rem 0;
   border-bottom: 1px solid var(--sep-border);
@@ -84,7 +89,9 @@
   font-size: 1.25rem;
   font-weight: 700;
   margin: 0;
-  white-space: nowrap;
+  width: 100%;
+  white-space: normal;
+  line-height: 1.3;
   background: linear-gradient(to right, #4f46e5, #3b82f6, #10b981) !important;
   background-size: 100% 100% !important;
   -webkit-background-clip: text !important;
@@ -95,9 +102,12 @@
 }
 
 .separation-page-wrapper .card-header p {
+  width: 100%;
   font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--sep-text-muted);
   margin: 0;
+  white-space: normal;
 }
 
 /* ===== CARD TITLES (gradient – Dashboard style) ===== */
@@ -669,6 +679,11 @@
 }
 
 .separation-page-wrapper .large-form .card-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.4rem;
   margin: 0 0 1.5rem 0;
   padding: 0 0 1.25rem 0;
 }

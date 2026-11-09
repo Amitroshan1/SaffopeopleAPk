@@ -201,7 +201,7 @@ export const PersonalInfoSection = ({
                             className="entry-save-btn"
                             disabled={isSaving}
                         >
-                            {isSaving ? 'Saving…' : 'Save'}
+                            {isSaving ? 'Saving…' : 'Save Personal Information'}
                         </button>
                     </div>
                 )}

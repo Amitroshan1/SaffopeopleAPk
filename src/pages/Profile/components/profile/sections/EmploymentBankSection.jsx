@@ -147,7 +147,7 @@ export const EmploymentBankSection = ({
                         className="entry-save-btn"
                         disabled={isSaving}
                     >
-                        {isSaving ? 'Saving…' : 'Save'}
+                        {isSaving ? 'Saving…' : 'Save Employment Details'}
                     </button>
                 </div>
             )}

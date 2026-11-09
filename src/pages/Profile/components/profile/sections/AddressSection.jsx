@@ -196,7 +196,7 @@ export const AddressSection = ({
                             Undo
                         </button>
                         <button type="button" onClick={onSave} className="entry-save-btn" disabled={isSaving}>
-                            {isSaving ? 'Saving…' : 'Save'}
+                            {isSaving ? 'Saving…' : 'Save address'}
                         </button>
                     </div>
                 )}
