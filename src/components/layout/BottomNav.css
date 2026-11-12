@@ -2,6 +2,11 @@
     bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
+/* When iOS hides BottomNav for the keyboard, reclaim the tab bar space. */
+.app-layout:not(:has(.bottom-nav)) > .content-area {
+    bottom: 0;
+}
+
 .bottom-nav {
     display: flex;
     position: fixed;
