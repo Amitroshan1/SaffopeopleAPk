@@ -5,7 +5,7 @@
  */
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
-const DEFAULT_PRODUCTION_API = 'https://solviotec.com';
+const DEFAULT_PRODUCTION_API = 'https://test.solviotec.com';
 
 const API_ORIGIN = (
   import.meta.env.VITE_API_ORIGIN ||
