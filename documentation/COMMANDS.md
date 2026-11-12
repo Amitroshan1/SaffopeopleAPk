@@ -8,6 +8,8 @@ Run all commands from `React/web-app` unless noted.
 - Android Studio (for APK/AAB)  
 - **JDK 21+** (required for Capacitor 8 / Android Gradle Plugin 8.13)  
 - Optional: `adb` for device install  
+- **Mac + Xcode** (for iOS / TestFlight)  
+- Paid **Apple Developer Program** (for TestFlight / App Store uploads)  
 
 Device example: `adb devices` → serial like `1ed9a1a7` (RMX5011).
 
@@ -122,7 +124,28 @@ Then rebuild / Run from Android Studio.
 npx cap sync android
 npx cap copy android    # assets only, no dependency update
 npx cap open android
+
+npx cap sync ios
+npx cap open ios
 ```
+
+---
+
+## iOS / TestFlight (Mac + Xcode)
+
+Full guide: [native/ios-testflight.md](./native/ios-testflight.md).
+
+```bash
+npm run build:mobile
+npx cap sync ios
+npx cap open ios
+```
+
+Then in Xcode: select **Any iOS Device** → bump **Build** number → **Product → Archive** → **Distribute App** → App Store Connect → **TestFlight**.
+
+Testers install via the **TestFlight** app (not a raw APK). Screenshots are **not** required for TestFlight; they are required for App Store production.
+
+Prerequisites: paid **Apple Developer Program** membership **Active**, app created in App Store Connect with bundle `com.saffo.hrms`.
 
 ---
 
@@ -134,6 +157,14 @@ npx cap sync android
 cd android
 .\gradlew.bat installDebug
 adb shell am start -n com.saffo.hrms/.MainActivity
+```
+
+iOS TestFlight loop (Mac):
+
+```bash
+npm run build:mobile
+npx cap sync ios
+# Xcode: Archive → Upload → invite testers in App Store Connect → TestFlight
 ```
 
 ## Capacitor major upgrade (reference)
