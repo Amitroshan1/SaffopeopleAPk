@@ -1,12 +1,14 @@
 # Saffo People — Frontend Documentation
 
-Onboarding guide for the **Saffo People** HRMS web app and Android shell (`com.saffo.hrms`).
+Onboarding guide for the **Saffo People** HRMS web app and Capacitor mobile shells (`com.saffo.hrms`).
 
-**Project root:** `React/web-app`  
+**Project root:** `React/web-app` (or this repo root)  
 **Product name:** Saffo People  
-**Android applicationId:** `com.saffo.hrms`  
+**App ID / Bundle ID:** `com.saffo.hrms`  
 **Production API:** `https://solviotec.com`  
-**Mobile shell:** Capacitor **8** · Android `versionCode` **3** / `versionName` **1.0.0** · minSdk **24** · targetSdk **36**
+**Mobile shell:** Capacitor **8**  
+- **Android:** `versionCode` **3** / `versionName` **1.0.0** · minSdk **24** · targetSdk **36**  
+- **iOS:** `MARKETING_VERSION` **1.0** / build **1** · iOS **15+** · TestFlight via App Store Connect  
 
 Also see [RELEASE_NOTES.md](./RELEASE_NOTES.md) for Play Store / changelog text.
 
@@ -14,7 +16,7 @@ Also see [RELEASE_NOTES.md](./RELEASE_NOTES.md) for Play Store / changelog text.
 
 ## Who this is for
 
-New engineers joining the frontend / Capacitor mobile track. Backend APIs are owned separately; this docs set describes the **React client**, routes, module APIs as called from the UI, and the **Android native** wrap.
+New engineers joining the frontend / Capacitor mobile track. Backend APIs are owned separately; this docs set describes the **React client**, routes, module APIs as called from the UI, and the **Android / iOS native** wraps.
 
 ---
 
@@ -45,11 +47,12 @@ New engineers joining the frontend / Capacitor mobile track. Backend APIs are ow
 | [modules/12-admin-accounts.md](./modules/12-admin-accounts.md) | Admin hub & accounts |
 | [modules/13-claims-holiday-misc.md](./modules/13-claims-holiday-misc.md) | Claims, holidays, performance, separation |
 
-### Native Android
+### Native (Capacitor)
 
 | Doc | Purpose |
 |-----|---------|
-| [native/android-capacitor.md](./native/android-capacitor.md) | Capacitor setup, mobile quirks, release builds |
+| [native/android-capacitor.md](./native/android-capacitor.md) | Capacitor Android setup, mobile quirks, Play / APK builds |
+| [native/ios-testflight.md](./native/ios-testflight.md) | iOS setup, Apple Developer, TestFlight, App Store production |
 
 ---
 

@@ -24,6 +24,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Saffo HRMS needs camera access to capture photos for required HRMS tasks.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is required for attendance and to verify your office location.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Saffo HRMS needs access to your photo library to select and upload images or documents.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,11 +72,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Saffo HRMS needs access to your photo library to select and upload images or documents.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Saffo HRMS needs camera access to capture photos for required HRMS tasks.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location is required for attendance and to verify your office location.</string>
 </dict>
 </plist>
